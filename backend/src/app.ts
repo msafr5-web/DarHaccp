@@ -21,6 +21,16 @@ export function createApp() {
   app.use(compression({ filter: (req, res) => !req.path.endsWith('/stream') && compression.filter(req, res) }));
   app.use(express.json({ limit: '200kb' }));
 
+  app.get('/', (_req, res) => {
+    res.json({
+      name: 'Dar Al Dhiafa IMS & HACCP API',
+      nameAr: 'واجهة برمجة منصة دار الضيافة لسلامة الغذاء',
+      version: process.env.npm_package_version ?? '1.0.0',
+      status: 'running',
+      endpoints: { health: '/health', api: '/api/v1', login: 'POST /api/v1/auth/login' },
+    });
+  });
+
   app.get('/health', async (_req, res) => {
     try {
       await checkDatabaseConnection();
