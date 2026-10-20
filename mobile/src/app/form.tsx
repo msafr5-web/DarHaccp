@@ -5,7 +5,7 @@ import { api, errorMessage } from '@/api/client';
 import type { Department, FormField, MonitoringRecord, ResolvedForm } from '@/api/types';
 import { Badge, Button, Card, Empty, Input, Loading, styles } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
-import { colors, departmentLabel } from '@/theme';
+import { colors, departmentLabel, textStart } from '@/theme';
 
 type Value = string | boolean | undefined;
 
@@ -168,7 +168,7 @@ export default function FormScreen() {
   if (result) {
     const pass = result.status === 'PASS';
     return (
-      <ScrollView contentContainerStyle={{ padding: 16 }}>
+      <ScrollView contentContainerStyle={styles.page}>
         <Stack.Screen options={{ title: form.template.titleAr }} />
         <Card style={{ backgroundColor: pass ? colors.successLight : colors.dangerLight, borderColor: pass ? colors.success : colors.danger }}>
           <Text style={{ fontSize: 48, textAlign: 'center' }}>{pass ? '✅' : '⛔'}</Text>
@@ -203,7 +203,7 @@ export default function FormScreen() {
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Stack.Screen options={{ title: form.template.titleAr }} />
-      <ScrollView contentContainerStyle={{ padding: 16 }} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
         <Card>
           <Text style={styles.title}>{form.template.titleAr}</Text>
           <Text style={styles.muted}>
@@ -242,7 +242,7 @@ export default function FormScreen() {
           <Input label="ملاحظات (اختياري)" value={notes} onChangeText={setNotes} multiline style={{ minHeight: 70 }} />
         </Card>
 
-        {submitError ? <Text style={{ color: colors.danger, marginBottom: 8, textAlign: 'left' }}>{submitError}</Text> : null}
+        {submitError ? <Text style={{ color: colors.danger, marginBottom: 8, textAlign: textStart }}>{submitError}</Text> : null}
         <Button title="حفظ السجل" onPress={submit} loading={busy} disabled={missing.length > 0 || !department} />
         {missing.length > 0 ? <Text style={[styles.muted, { textAlign: 'center' }]}>أكمل الحقول الإلزامية ({missing.length})</Text> : null}
       </ScrollView>

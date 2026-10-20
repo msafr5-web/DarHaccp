@@ -1,6 +1,6 @@
 import { ReactNode } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, TextInputProps, View, ViewStyle } from 'react-native';
-import { colors } from '../theme';
+import { colors, textStart } from '../theme';
 
 export function Card({ children, style }: { children: ReactNode; style?: ViewStyle }) {
   return <View style={[styles.card, style]}>{children}</View>;
@@ -85,6 +85,7 @@ export function Empty({ text }: { text: string }) {
 }
 
 export const styles = StyleSheet.create({
+  page: { padding: 16, width: '100%', maxWidth: 960, alignSelf: 'center' },
   card: {
     backgroundColor: colors.card,
     borderRadius: 14,
@@ -95,7 +96,7 @@ export const styles = StyleSheet.create({
   },
   button: { borderRadius: 12, paddingVertical: 14, alignItems: 'center', borderWidth: 1.5, marginVertical: 6 },
   buttonText: { fontSize: 16, fontWeight: '700' },
-  label: { fontSize: 14, fontWeight: '600', color: colors.text, marginBottom: 6, textAlign: 'left' },
+  label: { fontSize: 14, fontWeight: '600', color: colors.text, marginBottom: 6, textAlign: textStart },
   input: {
     borderWidth: 1,
     borderColor: colors.border,
@@ -106,14 +107,14 @@ export const styles = StyleSheet.create({
     backgroundColor: '#fff',
     color: colors.text,
   },
-  hint: { fontSize: 12, color: colors.muted, marginTop: 4, textAlign: 'left' },
+  hint: { fontSize: 12, color: colors.muted, marginTop: 4, textAlign: textStart },
   badge: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3, alignSelf: 'flex-start' },
   stat: { flex: 1, alignItems: 'center', paddingVertical: 8 },
   statValue: { fontSize: 24, fontWeight: '800' },
   statLabel: { fontSize: 12, color: colors.muted, marginTop: 2, textAlign: 'center' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: 18, fontWeight: '800', color: colors.text, textAlign: 'left' },
-  body: { fontSize: 14, color: colors.text, textAlign: 'left', lineHeight: 21 },
-  muted: { fontSize: 13, color: colors.muted, textAlign: 'left' },
+  title: { fontSize: 18, fontWeight: '800', color: colors.text, textAlign: textStart },
+  body: { fontSize: 14, color: colors.text, textAlign: textStart, lineHeight: 21 },
+  muted: { fontSize: 13, color: colors.muted, textAlign: textStart },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
 });

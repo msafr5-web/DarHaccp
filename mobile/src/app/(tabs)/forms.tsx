@@ -32,7 +32,7 @@ export default function FormsScreen() {
 
   return (
     <FlatList
-      contentContainerStyle={{ padding: 16 }}
+      contentContainerStyle={styles.page}
       data={templates}
       keyExtractor={(t) => t.id}
       refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}

@@ -57,7 +57,7 @@ export default function CapaScreen() {
   const fields = { rootCause, correctiveAction: corrective, preventiveAction: preventive, productDisposition: disposition };
 
   return (
-    <ScrollView contentContainerStyle={{ padding: 16 }} keyboardShouldPersistTaps="handled">
+    <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
       <Card>
         <View style={[styles.row, { justifyContent: 'space-between' }]}>
           <Text style={styles.title}>{capa.capa_no}</Text>

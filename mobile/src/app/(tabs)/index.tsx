@@ -6,7 +6,7 @@ import type { MonitoringRecord, Overview } from '@/api/types';
 import { InstallPrompt } from '@/components/InstallPrompt';
 import { Badge, Button, Card, Stat, styles } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
-import { colors, departmentLabel, roleLabel } from '@/theme';
+import { colors, departmentLabel, roleLabel, textStart } from '@/theme';
 
 const rateColor = (rate: number | null) =>
   rate === null ? colors.muted : rate >= 95 ? colors.success : rate >= 85 ? colors.warning : colors.danger;
@@ -43,7 +43,7 @@ export default function HomeScreen() {
   };
 
   return (
-    <ScrollView contentContainerStyle={{ padding: 16 }} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}>
+    <ScrollView contentContainerStyle={styles.page} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}>
       <Card>
         <Text style={styles.title}>مرحباً، {user?.full_name}</Text>
         <Text style={styles.muted}>
@@ -51,15 +51,15 @@ export default function HomeScreen() {
         </Text>
       </Card>
 
-      <InstallPrompt />
+      <InstallPrompt solid />
 
-      {error ? <Text style={{ color: colors.danger, marginBottom: 12, textAlign: 'left' }}>{error}</Text> : null}
+      {error ? <Text style={{ color: colors.danger, marginBottom: 12, textAlign: textStart }}>{error}</Text> : null}
 
       {overview ? (
         <>
           <Card>
             <Text style={styles.title}>نسبة الامتثال اليوم</Text>
-            <Text style={{ fontSize: 44, fontWeight: '900', color: rateColor(overview.compliance.complianceRate), textAlign: 'left' }}>
+            <Text style={{ fontSize: 44, fontWeight: '900', color: rateColor(overview.compliance.complianceRate), textAlign: textStart }}>
               {overview.compliance.complianceRate ?? '—'}%
             </Text>
             <View style={styles.row}>

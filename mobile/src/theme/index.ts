@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 export const colors = {
   primary: '#0B5D3B',
   primaryLight: '#E3F1EA',
@@ -36,3 +38,9 @@ export const roleLabel: Record<string, string> = {
   KITCHEN_SUPERVISOR: 'مشرف مطبخ',
   CHEF: 'شيف',
 };
+
+/**
+ * "Start" text alignment for Arabic. Native RTL mode swaps left/right automatically;
+ * react-native-web emits a literal CSS `text-align`, so the web build needs 'right'.
+ */
+export const textStart = Platform.OS === 'web' ? 'right' : 'left';

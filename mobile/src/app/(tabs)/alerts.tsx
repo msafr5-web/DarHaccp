@@ -70,7 +70,7 @@ export default function AlertsScreen() {
   if (tab === 'capas') {
     return (
       <FlatList
-        contentContainerStyle={{ padding: 16 }}
+        contentContainerStyle={styles.page}
         data={capas}
         keyExtractor={(c) => c.id}
         ListHeaderComponent={header}
@@ -96,7 +96,7 @@ export default function AlertsScreen() {
 
   return (
     <FlatList
-      contentContainerStyle={{ padding: 16 }}
+      contentContainerStyle={styles.page}
       data={alerts}
       keyExtractor={(a) => a.id}
       ListHeaderComponent={header}
