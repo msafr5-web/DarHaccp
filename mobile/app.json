@@ -21,7 +21,12 @@
       "package": "sa.daraldhiafa.haccp"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "output": "single",
+      "bundler": "metro",
+      "name": "دار الضيافة HACCP",
+      "themeColor": "#0B5D3B",
+      "lang": "ar"
     },
     "plugins": [
       "expo-router",

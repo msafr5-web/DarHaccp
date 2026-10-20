@@ -1,4 +1,4 @@
-import * as SecureStore from 'expo-secure-store';
+import { tokenStorage } from '../storage';
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { api, setAuthToken, setUnauthorizedHandler } from '../api/client';
 import type { Role, User } from '../api/types';
@@ -31,7 +31,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const clearSession = useCallback(async () => {
     setAuthToken(null);
     setUser(null);
-    await SecureStore.deleteItemAsync(TOKEN_KEY);
+    await tokenStorage.remove(TOKEN_KEY);
   }, []);
 
   // Restore session from the device keychain on launch.
@@ -39,7 +39,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUnauthorizedHandler(() => void clearSession());
     (async () => {
       try {
-        const token = await SecureStore.getItemAsync(TOKEN_KEY);
+        const token = await tokenStorage.get(TOKEN_KEY);
         if (token) {
           setAuthToken(token);
           setUser(await api<User>('/auth/me'));
@@ -59,7 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       method: 'POST',
       body: { email: email.trim(), password },
     });
-    await SecureStore.setItemAsync(TOKEN_KEY, token);
+    await tokenStorage.set(TOKEN_KEY, token);
     setAuthToken(token);
     setUser(u);
     void registerForPushNotifications();

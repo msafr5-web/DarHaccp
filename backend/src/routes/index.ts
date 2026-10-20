@@ -1,8 +1,10 @@
 import { Router } from 'express';
 import * as audit from '../controllers/audit.controller';
 import * as users from '../controllers/user.controller';
-import { authenticate, authorize } from '../middlewares/auth';
+import { authenticate, authorize, authorizeCron } from '../middlewares/auth';
 import { validate } from '../middlewares/validate';
+import { runComplianceChecks } from '../services/scheduler.service';
+import { ok } from '../utils/http';
 import alertRoutes from './alert.routes';
 import authRoutes from './auth.routes';
 import capaRoutes from './capa.routes';
@@ -17,6 +19,11 @@ import userRoutes from './user.routes';
 const api = Router();
 
 api.use('/auth', authRoutes);
+
+// Serverless deployments have no long-running scheduler: Vercel Cron calls this daily.
+api.get('/internal/cron/compliance', authorizeCron, async (_req, res) => {
+  ok(res, await runComplianceChecks());
+});
 
 // Everything below requires a valid JWT.
 api.use(authenticate);

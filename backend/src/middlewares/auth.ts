@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import type { NextFunction, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { env } from '../config/env';
@@ -55,6 +56,16 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
     departmentCode: user.department_code,
     fullName: user.full_name,
   };
+  next();
+}
+
+/** Scheduled-job endpoints: constant-time check of `Authorization: Bearer <CRON_SECRET>`. */
+export function authorizeCron(req: Request, _res: Response, next: NextFunction) {
+  const expected = env.CRON_SECRET ? Buffer.from(`Bearer ${env.CRON_SECRET}`) : null;
+  const received = Buffer.from(req.headers.authorization ?? '');
+  if (!expected || received.length !== expected.length || !timingSafeEqual(received, expected)) {
+    throw AppError.notFound('Route');
+  }
   next();
 }
 

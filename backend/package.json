@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:seed": "tsx src/db/seed.ts",
-    "db:migrate:prod": "node dist/db/migrate.js"
+    "db:migrate:prod": "node dist/db/migrate.js",
+    "vercel-build": "tsc -p tsconfig.json && node dist/db/migrate.js && node dist/db/seed.js"
   },
   "license": "UNLICENSED",
   "dependencies": {

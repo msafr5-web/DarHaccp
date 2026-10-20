@@ -4,14 +4,19 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { api } from './api/client';
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
+// Push notifications are native-only; the web build relies on the alerts screen instead.
+const pushSupported = Platform.OS !== 'web';
+
+if (pushSupported) {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+    }),
+  });
+}
 
 /**
  * Registers the device for HACCP alert push notifications (CCP deviations, expiring
@@ -20,7 +25,7 @@ Notifications.setNotificationHandler({
  */
 export async function registerForPushNotifications(): Promise<void> {
   try {
-    if (!Device.isDevice) return;
+    if (!pushSupported || !Device.isDevice) return;
 
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync('haccp-alerts', {
@@ -46,5 +51,6 @@ export async function registerForPushNotifications(): Promise<void> {
 }
 
 export async function unregisterPushNotifications(): Promise<void> {
+  if (!pushSupported) return;
   await api('/auth/push-token', { method: 'PUT', body: { pushToken: null } }).catch(() => undefined);
 }

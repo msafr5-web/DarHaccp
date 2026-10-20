@@ -1,6 +1,6 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { I18nManager } from 'react-native';
+import { I18nManager, Platform } from 'react-native';
 import { Loading } from '@/components/ui';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { colors } from '@/theme';
@@ -8,6 +8,10 @@ import { colors } from '@/theme';
 // Arabic-first UI: right-to-left layout (applies after the first app restart).
 I18nManager.allowRTL(true);
 I18nManager.forceRTL(true);
+if (Platform.OS === 'web' && typeof document !== 'undefined') {
+  document.documentElement.dir = 'rtl';
+  document.documentElement.lang = 'ar';
+}
 
 function RootNavigator() {
   const { user, loading } = useAuth();

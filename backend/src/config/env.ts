@@ -32,6 +32,8 @@ const schema = z.object({
   HEALTH_CERT_WARNING_DAYS: z.coerce.number().int().positive().default(30),
   SCHEDULER_INTERVAL_MINUTES: z.coerce.number().int().positive().default(60),
   EXPO_PUSH_ENABLED: bool.default(false),
+  /** Shared secret for scheduled jobs (Vercel Cron sends it as a Bearer token). */
+  CRON_SECRET: z.string().min(16).optional(),
 
   SEED_ADMIN_EMAIL: z.string().email().default('admin@daraldhiafa.sa'),
   SEED_ADMIN_PASSWORD: z.string().min(10).default('ChangeMe!2026'),

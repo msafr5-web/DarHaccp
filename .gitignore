@@ -19,3 +19,4 @@ mobile/android/
 *.p12
 *.key
 *.mobileprovision
+.vercel
