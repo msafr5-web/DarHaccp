@@ -49,10 +49,7 @@
     ],
     "scheme": "darhaccp",
     "extra": {
-      "apiUrl": "http://192.168.1.10:4000/api/v1",
-      "eas": {
-        "projectId": ""
-      }
+      "apiUrl": "https://dar-haccp-api.vercel.app/api/v1"
     },
     "experiments": {
       "typedRoutes": false
