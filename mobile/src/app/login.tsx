@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
 import { errorMessage } from '@/api/client';
+import { InstallPrompt } from '@/components/InstallPrompt';
 import { Button, Card, Input, styles } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
 import { colors } from '@/theme';
@@ -46,6 +47,7 @@ export default function LoginScreen() {
           {error ? <Text style={{ color: colors.danger, marginBottom: 8, textAlign: 'left' }}>{error}</Text> : null}
           <Button title="دخول" onPress={submit} loading={busy} disabled={!email || !password} />
         </Card>
+        <InstallPrompt />
       </ScrollView>
     </KeyboardAvoidingView>
   );

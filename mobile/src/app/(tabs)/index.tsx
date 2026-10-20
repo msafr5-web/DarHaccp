@@ -3,6 +3,7 @@ import { useCallback, useState } from 'react';
 import { RefreshControl, ScrollView, Text, View } from 'react-native';
 import { api, errorMessage } from '@/api/client';
 import type { MonitoringRecord, Overview } from '@/api/types';
+import { InstallPrompt } from '@/components/InstallPrompt';
 import { Badge, Button, Card, Stat, styles } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
 import { colors, departmentLabel, roleLabel } from '@/theme';
@@ -49,6 +50,8 @@ export default function HomeScreen() {
           {roleLabel[user?.role ?? '']} {user?.department_code ? `· ${departmentLabel[user.department_code]}` : '· جميع الأقسام'}
         </Text>
       </Card>
+
+      <InstallPrompt />
 
       {error ? <Text style={{ color: colors.danger, marginBottom: 12, textAlign: 'left' }}>{error}</Text> : null}
 
