@@ -1,0 +1,105 @@
+import { pool, withTransaction } from '../config/database';
+import { env } from '../config/env';
+import { logger } from '../config/logger';
+import { Alert, insertAlert } from '../models/alert.model';
+import { publishAlert } from './alert.service';
+
+// Arbitrary constant: only one API instance runs the checks at a time (pg advisory lock).
+const SCHEDULER_LOCK_ID = 774_201;
+
+/**
+ * Periodic compliance checks:
+ *  - health certificates expiring within HEALTH_CERT_WARNING_DAYS (or already expired)
+ *  - equipment whose preventive maintenance is due within 7 days (or overdue)
+ * Idempotent: an unresolved alert per source is never duplicated, and alerts whose
+ * cause disappeared (certificate renewed, maintenance done) are auto-resolved.
+ */
+export async function runComplianceChecks(): Promise<{ created: number }> {
+  const lockClient = await pool.connect();
+  try {
+    const { rows: lock } = await lockClient.query<{ locked: boolean }>('SELECT pg_try_advisory_lock($1) AS locked', [SCHEDULER_LOCK_ID]);
+    if (!lock[0]?.locked) return { created: 0 };
+
+    try {
+      const created: Alert[] = await withTransaction(null, async (db) => {
+        const out: Alert[] = [];
+
+        // Only the latest certificate of each employee matters (older ones were renewed).
+        const certs = await db.query<{ id: string; employee_name: string; employee_no: string; department_id: number; expiry_date: string; days: number }>(
+          `SELECT * FROM (
+              SELECT DISTINCT ON (employee_no) id, employee_name, employee_no, department_id, expiry_date,
+                     (expiry_date - (now() AT TIME ZONE $2)::date) AS days
+                FROM health_certificates ORDER BY employee_no, expiry_date DESC
+           ) latest WHERE days <= $1`,
+          [env.HEALTH_CERT_WARNING_DAYS, env.APP_TIMEZONE],
+        );
+        for (const c of certs.rows) {
+          const expired = c.days < 0;
+          const alert = await insertAlert(db, {
+            sourceType: 'HEALTH_CERT_EXPIRY',
+            sourceId: c.id,
+            departmentId: c.department_id,
+            severity: expired ? 'HIGH' : c.days <= 7 ? 'MEDIUM' : 'LOW',
+            title: expired ? 'شهادة صحية منتهية' : 'شهادة صحية قاربت على الانتهاء',
+            message: expired
+              ? `${c.employee_name} (${c.employee_no}): health certificate expired on ${c.expiry_date} — remove from food handling`
+              : `${c.employee_name} (${c.employee_no}): health certificate expires in ${c.days} day(s) on ${c.expiry_date}`,
+          });
+          if (alert) out.push(alert);
+        }
+        await db.query(
+          `UPDATE alerts SET status = 'RESOLVED', resolved_at = now()
+            WHERE source_type = 'HEALTH_CERT_EXPIRY' AND status <> 'RESOLVED' AND NOT (source_id = ANY($1::uuid[]))`,
+          [certs.rows.map((c) => c.id)],
+        );
+
+        const equipment = await db.query<{ id: string; code: string; name: string; department_id: number; next_maintenance_date: string; days: number }>(
+          `SELECT id, code, name, department_id, next_maintenance_date,
+                  (next_maintenance_date - (now() AT TIME ZONE $1)::date) AS days
+             FROM equipment
+            WHERE is_active AND next_maintenance_date IS NOT NULL
+              AND next_maintenance_date <= (now() AT TIME ZONE $1)::date + 7`,
+          [env.APP_TIMEZONE],
+        );
+        for (const e of equipment.rows) {
+          const overdue = e.days < 0;
+          const alert = await insertAlert(db, {
+            sourceType: 'EQUIPMENT_MAINTENANCE',
+            sourceId: e.id,
+            departmentId: e.department_id,
+            severity: overdue ? 'HIGH' : 'LOW',
+            title: overdue ? 'صيانة متأخرة' : 'صيانة وقائية مستحقة',
+            message: `${e.code} ${e.name}: preventive maintenance ${overdue ? `overdue since ${e.next_maintenance_date}` : `due on ${e.next_maintenance_date}`}`,
+          });
+          if (alert) out.push(alert);
+        }
+        await db.query(
+          `UPDATE alerts SET status = 'RESOLVED', resolved_at = now()
+            WHERE source_type = 'EQUIPMENT_MAINTENANCE' AND status <> 'RESOLVED' AND NOT (source_id = ANY($1::uuid[]))`,
+          [equipment.rows.map((e) => e.id)],
+        );
+        return out;
+      });
+
+      created.forEach(publishAlert);
+      if (created.length) logger.info({ created: created.length }, 'Compliance checks raised new alerts');
+      return { created: created.length };
+    } finally {
+      await lockClient.query('SELECT pg_advisory_unlock($1)', [SCHEDULER_LOCK_ID]);
+    }
+  } finally {
+    lockClient.release();
+  }
+}
+
+export function startScheduler(): () => void {
+  const run = () => runComplianceChecks().catch((err) => logger.error({ err }, 'Compliance checks failed'));
+  const first = setTimeout(run, 10_000);
+  const interval = setInterval(run, env.SCHEDULER_INTERVAL_MINUTES * 60_000);
+  first.unref();
+  interval.unref();
+  return () => {
+    clearTimeout(first);
+    clearInterval(interval);
+  };
+}
