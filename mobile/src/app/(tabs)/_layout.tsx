@@ -20,6 +20,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="index" options={{ title: 'الرئيسية', tabBarIcon: icon('🏠') }} />
       <Tabs.Screen name="scan" options={{ title: 'مسح QR', tabBarIcon: icon('📷') }} />
       <Tabs.Screen name="forms" options={{ title: 'النماذج', tabBarIcon: icon('📋') }} />
+      <Tabs.Screen name="modules" options={{ title: 'الوحدات', tabBarIcon: icon('🧩') }} />
       <Tabs.Screen name="alerts" options={{ title: 'التنبيهات', tabBarIcon: icon('🔔') }} />
     </Tabs>
   );

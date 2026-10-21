@@ -193,8 +193,10 @@ export const submitRecordSchema = z.object({
   productName: optText(150),
   batchNo: optText(60),
   notes: optText(2000),
+  correctiveActionTaken: optText(2000),
   source: z.enum(['QR', 'MANUAL']).default('MANUAL'),
   recordedAt: isoDateTime.optional(),
+  clientRef: uuid.optional(),
 });
 
 export async function getRecords(req: Request, res: Response) {

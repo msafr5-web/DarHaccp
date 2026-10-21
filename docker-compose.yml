@@ -29,5 +29,24 @@ services:
     ports:
       - "4000:4000"
 
+  # Daily compressed backup, 14-day retention (see docs/DISASTER-RECOVERY.md). Copy ./backups off-site.
+  db-backup:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-dar_password}
+      TZ: Asia/Riyadh
+    volumes:
+      - ./backups:/backups
+    entrypoint: >
+      sh -c 'while true; do
+        pg_dump -h db -U dar -d dar_haccp -Fc -f /backups/dar_haccp-$$(date +%F).dump &&
+        find /backups -name "*.dump" -mtime +14 -delete;
+        sleep 86400;
+      done'
+
 volumes:
   pgdata:

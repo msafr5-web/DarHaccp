@@ -12,17 +12,34 @@ interface AuthState {
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   /** Mirrors the backend permission matrix (UI only — the server enforces it). */
-  can: (permission: 'dashboard' | 'capa:update' | 'capa:verify' | 'alert:manage') => boolean;
+  can: (permission: UiPermission) => boolean;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
 
-const UI_PERMISSIONS: Record<string, Role[]> = {
-  dashboard: ['ADMIN', 'HACCP_OFFICER', 'HSE_OFFICER', 'KITCHEN_SUPERVISOR'],
+const ALL: Role[] = ['ADMIN', 'HACCP_OFFICER', 'HSE_OFFICER', 'KITCHEN_SUPERVISOR', 'CHEF'];
+const MANAGERS: Role[] = ['ADMIN', 'HACCP_OFFICER', 'HSE_OFFICER', 'KITCHEN_SUPERVISOR'];
+
+/** Mirrors backend/src/config/permissions.ts — the UI hides what the server would refuse anyway. */
+const UI_PERMISSIONS = {
+  dashboard: MANAGERS,
   'capa:update': ['ADMIN', 'HACCP_OFFICER', 'KITCHEN_SUPERVISOR'],
   'capa:verify': ['ADMIN', 'HACCP_OFFICER'],
-  'alert:manage': ['ADMIN', 'HACCP_OFFICER', 'HSE_OFFICER', 'KITCHEN_SUPERVISOR'],
-};
+  'alert:manage': MANAGERS,
+  'staff:read': MANAGERS,
+  'incident:create': ALL,
+  'incident:read': MANAGERS,
+  'internal-audit:read': MANAGERS,
+  'internal-audit:manage': ['ADMIN', 'HACCP_OFFICER', 'HSE_OFFICER'],
+  'recipe:read': ALL,
+  'label:create': ['ADMIN', 'HACCP_OFFICER', 'KITCHEN_SUPERVISOR', 'CHEF'],
+  'label:read': ALL,
+  'contractor:read': MANAGERS,
+  'contractor:manage': ['ADMIN', 'HSE_OFFICER'],
+  'document:read': ALL,
+} satisfies Record<string, Role[]>;
+
+export type UiPermission = keyof typeof UI_PERMISSIONS;
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -76,7 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       signIn,
       signOut,
-      can: (p) => !!user && (UI_PERMISSIONS[p] ?? []).includes(user.role),
+      can: (p) => !!user && (UI_PERMISSIONS[p] as Role[]).includes(user.role),
     }),
     [user, loading, signIn, signOut],
   );

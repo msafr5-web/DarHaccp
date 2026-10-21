@@ -37,6 +37,9 @@ export function buildDataSchema(fields: FormField[]) {
       case 'date':
         s = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, `${f.labelEn} must be a date (YYYY-MM-DD)`);
         break;
+      case 'time':
+        s = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, `${f.labelEn} must be a time (HH:MM)`);
+        break;
       case 'select':
         s = z.enum((f.options?.length ? f.options : ['']) as [string, ...string[]], { error: `${f.labelEn}: invalid option` });
         break;
@@ -47,6 +50,12 @@ export function buildDataSchema(fields: FormField[]) {
     shape[f.key] = f.required || f.ccpMeasurement ? s : s.nullish();
   }
   return z.strictObject(shape);
+}
+
+/** Minutes from HH:MM `from` to HH:MM `to`, crossing midnight when needed. */
+export function minutesBetween(from: string, to: string): number {
+  const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+  return (toMin(to) - toMin(from) + 1440) % 1440;
 }
 
 export interface Evaluation {
@@ -87,9 +96,26 @@ export function evaluate(fields: FormField[], data: Record<string, unknown>, ccp
           label: field.labelAr,
           value,
           limit,
-          critical: !!field.ccpMeasurement,
+          critical: !!(field.ccpMeasurement || field.critical),
           message: `${field.labelEn}: ${value} ${fieldUnit} is ${below ? 'below' : 'above'} the critical limit (${limit})`.replace(/\s+/g, ' '),
         });
+      }
+    }
+
+    if (field.type === 'time' && field.durationFrom && field.maxMinutes !== undefined && typeof value === 'string') {
+      const start = data[field.durationFrom];
+      if (typeof start === 'string') {
+        const minutes = minutesBetween(start, value);
+        if (minutes > field.maxMinutes) {
+          deviations.push({
+            field: field.key,
+            label: field.labelAr,
+            value: `${minutes} min`,
+            limit: `≤ ${field.maxMinutes} min`,
+            critical: !!(field.ccpMeasurement || field.critical),
+            message: `${field.labelEn}: ${minutes} min exceeds the time limit of ${field.maxMinutes} min`,
+          });
+        }
       }
     }
 
@@ -99,7 +125,7 @@ export function evaluate(fields: FormField[], data: Record<string, unknown>, ccp
         label: field.labelAr,
         value,
         limit: field.expected ? 'Yes' : 'No',
-        critical: !!field.ccpMeasurement,
+        critical: !!(field.ccpMeasurement || field.critical),
         message: `${field.labelEn}: non-compliant answer`,
       });
     }
@@ -114,7 +140,7 @@ export const formFieldSchema = z
     key: z.string().regex(/^[a-z][a-z0-9_]{1,40}$/, 'key must be snake_case'),
     labelAr: z.string().min(1).max(150),
     labelEn: z.string().min(1).max(150),
-    type: z.enum(['number', 'text', 'boolean', 'date', 'select']),
+    type: z.enum(['number', 'text', 'boolean', 'date', 'select', 'time']),
     unit: z.string().max(10).optional(),
     required: z.boolean().optional(),
     options: z.array(z.string().min(1).max(100)).min(1).optional(),
@@ -122,6 +148,12 @@ export const formFieldSchema = z
     max: z.number().optional(),
     expected: z.boolean().optional(),
     ccpMeasurement: z.boolean().optional(),
+    durationFrom: z.string().optional(),
+    maxMinutes: z.number().int().positive().max(2880).optional(),
+    critical: z.boolean().optional(),
+  })
+  .refine((f) => !f.durationFrom || (f.type === 'time' && f.maxMinutes !== undefined), {
+    message: 'durationFrom requires a time field with maxMinutes',
   })
   .refine((f) => f.type !== 'select' || !!f.options?.length, { message: 'select fields need options' })
   .refine((f) => f.min === undefined || f.max === undefined || f.min <= f.max, { message: 'min must be ≤ max' })
@@ -132,4 +164,7 @@ export const formFieldsSchema = z
   .min(1)
   .max(60)
   .refine((fs) => new Set(fs.map((f) => f.key)).size === fs.length, { message: 'field keys must be unique' })
-  .refine((fs) => fs.filter((f) => f.ccpMeasurement).length <= 1, { message: 'only one ccpMeasurement field is allowed' });
+  .refine((fs) => fs.filter((f) => f.ccpMeasurement).length <= 1, { message: 'only one ccpMeasurement field is allowed' })
+  .refine((fs) => fs.every((f) => !f.durationFrom || fs.some((s) => s.key === f.durationFrom && s.type === 'time')), {
+    message: 'durationFrom must reference a time field of the same form',
+  });

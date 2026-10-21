@@ -11,6 +11,7 @@ export interface Ccp {
   name_en: string;
   department_id: number | null;
   hazard: string;
+  hazard_type: 'BIOLOGICAL' | 'CHEMICAL' | 'PHYSICAL' | 'ALLERGEN';
   parameter: string;
   unit: string;
   min_value: number | null;
@@ -26,7 +27,7 @@ export interface FormField {
   key: string;
   labelAr: string;
   labelEn: string;
-  type: 'number' | 'text' | 'boolean' | 'date' | 'select';
+  type: 'number' | 'text' | 'boolean' | 'date' | 'select' | 'time';
   unit?: string;
   required?: boolean;
   options?: string[];
@@ -36,6 +37,11 @@ export interface FormField {
   expected?: boolean;
   /** Primary CCP reading. Its critical limits come from the linked CCP (single source of truth). */
   ccpMeasurement?: boolean;
+  /** Time limit (e.g. blast chilling 60→4°C in ≤ 360 min): this 'time' field ends the interval started by `durationFrom`. */
+  durationFrom?: string;
+  maxMinutes?: number;
+  /** Treat a deviation on this field as critical (part of the CCP), even if it is not the main measurement. */
+  critical?: boolean;
 }
 
 export interface FormTemplate {

@@ -20,3 +20,5 @@ mobile/android/
 *.key
 *.mobileprovision
 .vercel
+backups/
+*.dump

@@ -1,42 +1,49 @@
-import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { router } from 'expo-router';
+import { useEffect } from 'react';
 import { FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
-import { api, errorMessage } from '@/api/client';
+import { api } from '@/api/client';
 import type { FormTemplateSummary } from '@/api/types';
-import { Badge, Card, Empty, styles } from '@/components/ui';
+import { Badge, Card, Empty, OfflineNote, styles } from '@/components/ui';
+import { useApi } from '@/hooks/useApi';
+import { cacheForm } from '@/offline';
 import { colors, departmentLabel } from '@/theme';
+
+let prefetched = false;
+
+/** Caches every form definition once per session so all forms can be filled offline. */
+async function prefetchForms(templates: FormTemplateSummary[]) {
+  if (prefetched) return;
+  prefetched = true;
+  for (const t of templates) {
+    try {
+      await cacheForm(t.qr_token, await api('/qr/resolve', { method: 'POST', body: { payload: t.qr_token } }));
+    } catch {
+      prefetched = false; // retry next time the list loads online
+      return;
+    }
+  }
+}
 
 /** Manual fallback when a QR label is missing or damaged. */
 export default function FormsScreen() {
-  const [templates, setTemplates] = useState<FormTemplateSummary[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const { data: templates, error, loading, offline, reload } = useApi<FormTemplateSummary[]>('/haccp/templates');
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setTemplates(await api<FormTemplateSummary[]>('/haccp/templates'));
-    } catch (e) {
-      setError(errorMessage(e));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      void load();
-    }, [load]),
-  );
+  useEffect(() => {
+    if (templates && !offline) void prefetchForms(templates);
+  }, [templates, offline]);
 
   return (
     <FlatList
       contentContainerStyle={styles.page}
-      data={templates}
+      data={templates ?? []}
       keyExtractor={(t) => t.id}
-      refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}
-      ListHeaderComponent={error ? <Text style={{ color: colors.danger, marginBottom: 12 }}>{error}</Text> : undefined}
+      refreshControl={<RefreshControl refreshing={loading} onRefresh={reload} />}
+      ListHeaderComponent={
+        <View>
+          <OfflineNote show={offline} />
+          {error ? <Text style={{ color: colors.danger, marginBottom: 12 }}>{error}</Text> : null}
+        </View>
+      }
       ListEmptyComponent={loading ? undefined : <Empty text="لا توجد نماذج متاحة لقسمك" />}
       renderItem={({ item }) => (
         <Pressable onPress={() => router.push({ pathname: '/form', params: { payload: item.qr_token, source: 'MANUAL' } })}>

@@ -11,6 +11,13 @@ export const API_URL: string =
   (Platform.OS === 'web' ? '/api/v1' : (Constants.expoConfig?.extra?.apiUrl as string | undefined)) ??
   'http://localhost:4000/api/v1';
 
+/** Absolute URL for links opened outside the app (e.g. printable data cards). */
+export function absoluteUrl(path: string): string {
+  if (/^https?:/.test(path)) return path;
+  if (Platform.OS === 'web') return path;
+  return API_URL.replace(/\/api\/v1\/?$/, '') + path;
+}
+
 /** Server + database reachability, used by the login screen to explain connection problems up front. */
 export async function checkServerHealth(): Promise<'ok' | 'degraded' | 'unreachable'> {
   try {

@@ -30,7 +30,8 @@ export interface MonitoringRecord {
   product_name: string | null;
   batch_no: string | null;
   notes: string | null;
-  source: 'QR' | 'MANUAL';
+  corrective_action_taken: string | null;
+  source: 'QR' | 'MANUAL' | 'IOT';
   recorded_at: string;
   capa_id: string | null;
 }
@@ -40,7 +41,7 @@ const SELECT_RECORD = `
          r.ccp_id, c.code AS ccp_code, r.department_id, d.code AS department_code,
          r.equipment_id, e.code AS equipment_code, r.recorded_by, u.full_name AS recorded_by_name,
          r.measured_value, r.unit, r.data, r.status, r.deviations, r.product_name, r.batch_no,
-         r.notes, r.source, r.recorded_at,
+         r.notes, r.corrective_action_taken, r.source, r.recorded_at, r.client_ref,
          (SELECT cp.id FROM capas cp WHERE cp.record_id = r.id LIMIT 1) AS capa_id
     FROM monitoring_records r
     JOIN form_templates t ON t.id = r.template_id

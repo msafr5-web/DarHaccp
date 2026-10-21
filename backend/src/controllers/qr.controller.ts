@@ -35,8 +35,8 @@ export async function resolve(req: Request, res: Response) {
   await insertAuditEvent({
     userId: user.id,
     action: 'QR_SCAN',
-    entity: result.kind === 'EQUIPMENT' ? 'equipment' : 'form_templates',
-    entityId: result.equipment?.id ?? result.template.id,
+    entity: result.kind === 'LABEL' ? 'product_labels' : result.kind === 'EQUIPMENT' ? 'equipment' : 'form_templates',
+    entityId: result.kind === 'LABEL' ? result.label.id : result.equipment?.id ?? result.template.id,
     ip: req.ip,
     userAgent: req.get('user-agent'),
     requestId: req.requestId,

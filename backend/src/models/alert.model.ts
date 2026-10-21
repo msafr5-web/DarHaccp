@@ -1,7 +1,9 @@
 import { query, Queryable } from '../config/database';
 import type { Severity } from './haccp.model';
 
-export type AlertSource = 'CCP_DEVIATION' | 'HEALTH_CERT_EXPIRY' | 'EQUIPMENT_MAINTENANCE';
+export type AlertSource =
+  | 'CCP_DEVIATION' | 'HEALTH_CERT_EXPIRY' | 'EQUIPMENT_MAINTENANCE'
+  | 'INCIDENT' | 'LABEL_EXPIRY' | 'CONTRACTOR_EXPIRY' | 'DOCUMENT_REVIEW';
 export type AlertStatus = 'OPEN' | 'ACKNOWLEDGED' | 'RESOLVED';
 
 export interface Alert {

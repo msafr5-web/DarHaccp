@@ -54,6 +54,7 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
     role: user.role,
     departmentId: user.department_id,
     departmentCode: user.department_code,
+    branchId: user.branch_id,
     fullName: user.full_name,
   };
   next();

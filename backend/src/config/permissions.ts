@@ -22,6 +22,26 @@ export const PERMISSIONS = {
   'dashboard:view': ['ADMIN', 'HACCP_OFFICER', 'HSE_OFFICER', 'KITCHEN_SUPERVISOR'],
   'audit:read': ['ADMIN', 'HACCP_OFFICER'],
   'user:manage': ['ADMIN'],
+  // HSE & support services
+  'staff:read': ['ADMIN', 'HACCP_OFFICER', 'HSE_OFFICER', 'KITCHEN_SUPERVISOR'],
+  'staff:manage': ['ADMIN', 'HACCP_OFFICER', 'HSE_OFFICER'],
+  'staff:view-id': ['ADMIN', 'HSE_OFFICER'],
+  'contractor:read': ['ADMIN', 'HACCP_OFFICER', 'HSE_OFFICER', 'KITCHEN_SUPERVISOR'],
+  'contractor:manage': ['ADMIN', 'HSE_OFFICER'],
+  'document:read': ['ADMIN', 'HACCP_OFFICER', 'HSE_OFFICER', 'KITCHEN_SUPERVISOR', 'CHEF'],
+  'document:manage': ['ADMIN', 'HACCP_OFFICER', 'HSE_OFFICER'],
+  // Quality: anyone may report an incident; investigation follows the CAPA permissions
+  'incident:create': ['ADMIN', 'HACCP_OFFICER', 'HSE_OFFICER', 'KITCHEN_SUPERVISOR', 'CHEF'],
+  'incident:read': ['ADMIN', 'HACCP_OFFICER', 'HSE_OFFICER', 'KITCHEN_SUPERVISOR'],
+  'internal-audit:read': ['ADMIN', 'HACCP_OFFICER', 'HSE_OFFICER', 'KITCHEN_SUPERVISOR'],
+  'internal-audit:manage': ['ADMIN', 'HACCP_OFFICER', 'HSE_OFFICER'],
+  // Confectionery: recipes & product data cards
+  'recipe:read': ['ADMIN', 'HACCP_OFFICER', 'HSE_OFFICER', 'KITCHEN_SUPERVISOR', 'CHEF'],
+  'recipe:manage': ['ADMIN', 'HACCP_OFFICER', 'KITCHEN_SUPERVISOR'],
+  'label:create': ['ADMIN', 'HACCP_OFFICER', 'KITCHEN_SUPERVISOR', 'CHEF'],
+  'label:read': ['ADMIN', 'HACCP_OFFICER', 'HSE_OFFICER', 'KITCHEN_SUPERVISOR', 'CHEF'],
+  // IoT probes
+  'iot:manage': ['ADMIN'],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

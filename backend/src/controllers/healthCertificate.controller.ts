@@ -54,8 +54,8 @@ export async function create(req: Request, res: Response) {
   const row = await withTransaction(dbContext(req), async (db) => {
     const { rows } = await db.query(
       `INSERT INTO health_certificates (user_id, employee_no, employee_name, department_id, certificate_no,
-                                        issuing_authority, issue_date, expiry_date, notes, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+                                        issuing_authority, issue_date, expiry_date, notes, created_by, staff_id)
+       VALUES ($1,$2::varchar,$3,$4,$5,$6,$7,$8,$9,$10, (SELECT id FROM staff WHERE employee_no = $2::varchar)) RETURNING *`,
       [b.userId ?? null, b.employeeNo, b.employeeName, dept.id, b.certificateNo, b.issuingAuthority, b.issueDate,
         b.expiryDate, b.notes ?? null, req.user!.id],
     );

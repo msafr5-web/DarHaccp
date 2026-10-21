@@ -14,7 +14,7 @@ export interface FormField {
   key: string;
   labelAr: string;
   labelEn: string;
-  type: 'number' | 'text' | 'boolean' | 'date' | 'select';
+  type: 'number' | 'text' | 'boolean' | 'date' | 'select' | 'time';
   unit?: string;
   required?: boolean;
   options?: string[];
@@ -22,7 +22,139 @@ export interface FormField {
   max?: number;
   expected?: boolean;
   ccpMeasurement?: boolean;
+  durationFrom?: string;
+  maxMinutes?: number;
+  critical?: boolean;
   limitText?: string;
+}
+
+export interface ResolvedLabel {
+  kind: 'LABEL';
+  label: { id: string; label_no: string; product_name: string; batch_no: string; status: string; produced_at: string; expires_at: string; expired: boolean };
+}
+
+export type Severity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+
+export interface Incident {
+  id: string;
+  incident_no: string;
+  type: string;
+  severity: Severity;
+  department_code: Department;
+  title: string;
+  description: string;
+  location: string | null;
+  occurred_at: string;
+  status: 'OPEN' | 'UNDER_INVESTIGATION' | 'CLOSED';
+  reported_by_name: string;
+  assigned_to_name: string | null;
+  root_cause: string | null;
+  corrective_action: string | null;
+  capa_id: string | null;
+  capa_no: string | null;
+  capa_status: string | null;
+  audit_no: string | null;
+}
+
+export interface AuditItem {
+  id: string;
+  clause: string;
+  question: string;
+  compliant: boolean | null;
+  note: string | null;
+}
+
+export interface InternalAudit {
+  id: string;
+  audit_no: string;
+  title: string;
+  standard: string;
+  department_code: Department;
+  auditor_name: string;
+  scheduled_date: string;
+  conducted_at: string | null;
+  status: 'PLANNED' | 'COMPLETED';
+  score: number | null;
+  findings: number;
+  open_findings: number;
+  items?: AuditItem[];
+  summary?: string | null;
+}
+
+export interface Recipe {
+  id: string;
+  code: string;
+  name_ar: string;
+  department_code: Department;
+  ingredients: { name: string }[];
+  allergens: string[];
+  shelf_life_hours: number;
+  storage_temp_max: number | null;
+  storage_instructions: string | null;
+}
+
+export interface ProductLabel {
+  id: string;
+  label_no: string;
+  product_name: string;
+  batch_no: string;
+  quantity: number;
+  unit: string;
+  produced_at: string;
+  expires_at: string;
+  hours_left: number;
+  state: 'FRESH' | 'EXPIRING' | 'EXPIRED';
+  status: 'ACTIVE' | 'CONSUMED' | 'DISCARDED';
+  status_reason: string | null;
+  allergens: string[];
+  ingredients: { name: string }[];
+  storage_temp_max: number | null;
+  department_code: Department;
+  produced_by_name: string;
+  printUrl?: string;
+}
+
+export interface StaffMember {
+  id: string;
+  employee_no: string;
+  full_name: string;
+  nationality: string | null;
+  id_number_last4: string | null;
+  job_title: string | null;
+  department_code: Department;
+  status: string;
+  municipality_cert_no: string | null;
+  cert_expiry_date: string | null;
+  days_to_expiry: number | null;
+  fitness: 'FIT' | 'EXPIRING_SOON' | 'UNFIT';
+  last_daily_check: string | null;
+}
+
+export interface Contractor {
+  id: string;
+  name: string;
+  service_type: string;
+  license_no: string | null;
+  license_expiry: string | null;
+  contract_end: string | null;
+  is_approved: boolean;
+  compliance_state: 'VALID' | 'EXPIRING_SOON' | 'EXPIRED';
+  last_score: number | null;
+  last_period: string | null;
+  last_recommendation: string | null;
+}
+
+export interface ControlledDocument {
+  id: string;
+  doc_no: string;
+  title: string;
+  category: string;
+  version: string;
+  effective_date: string;
+  review_date: string | null;
+  review_state: 'CURRENT' | 'DUE_SOON' | 'OVERDUE' | 'NO_REVIEW';
+  file_url: string | null;
+  owner_name: string | null;
 }
 
 export interface ResolvedForm {
@@ -111,4 +243,8 @@ export interface Overview {
   capas: { open: number; in_progress: number; overdue: number; closed_awaiting_verification: number };
   healthCertificates: { total: number; valid: number; expiring_soon: number; expired: number; warningDays: number };
   equipment: { total: number; operational: number; under_maintenance: number; out_of_service: number; maintenance_overdue: number; maintenance_due_7d: number };
+  quality: { open_incidents: number; open_food_safety: number; audits_30d: number; avg_audit_score: number | null; planned_audits: number };
+  labels: { active: number; expiring_12h: number; expired_not_discarded: number };
+  staff: { food_handlers: number; fit: number; expiring_soon: number; unfit: number };
+  hse: { contractors_expiring: number; documents_due_review: number };
 }

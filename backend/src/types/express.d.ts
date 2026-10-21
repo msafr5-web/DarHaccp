@@ -5,6 +5,7 @@ export interface AuthUser {
   role: Role;
   departmentId: number | null;
   departmentCode: DepartmentCode | null;
+  branchId: number | null;
   fullName: string;
 }
 

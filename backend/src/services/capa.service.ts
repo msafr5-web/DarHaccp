@@ -73,6 +73,19 @@ export async function closeCapa(ctx: DbContext, user: AuthUser, id: string, u: C
         [capa.alert_id, user.id],
       );
     }
+    // Incident / non-conformity CAPA: the incident closes with its investigation results.
+    if (capa.incident_id) {
+      await db.query(
+        `UPDATE incidents SET status = 'CLOSED', root_cause = $2, corrective_action = $3, closed_by = $4, closed_at = now()
+          WHERE id = $1`,
+        [capa.incident_id, rootCause, correctiveAction, user.id],
+      );
+      await db.query(
+        `UPDATE alerts SET status = 'RESOLVED', resolved_by = $2, resolved_at = now()
+          WHERE source_type = 'INCIDENT' AND source_id = $1 AND status <> 'RESOLVED'`,
+        [capa.incident_id, user.id],
+      );
+    }
   });
   return findCapaById(id);
 }

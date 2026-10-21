@@ -32,6 +32,12 @@ const schema = z.object({
   HEALTH_CERT_WARNING_DAYS: z.coerce.number().int().positive().default(30),
   SCHEDULER_INTERVAL_MINUTES: z.coerce.number().int().positive().default(60),
   EXPO_PUSH_ENABLED: bool.default(false),
+  /** 64 hex chars (32 bytes): AES-256-GCM key for sensitive personal data (national ID / iqama). */
+  DATA_ENCRYPTION_KEY: z
+    .string()
+    .regex(/^([0-9a-f]{64})?$/i, 'DATA_ENCRYPTION_KEY must be 64 hex characters')
+    .optional()
+    .transform((v) => v || undefined),
   /** Shared secret for scheduled jobs (Vercel Cron sends it as a Bearer token). */
   CRON_SECRET: z.string().min(16).optional(),
 

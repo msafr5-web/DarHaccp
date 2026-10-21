@@ -1,5 +1,7 @@
 # دار الضيافة — منصة سلامة الغذاء والجودة المتكاملة (IMS & HACCP)
 
+> 📋 **مطابقة وثيقة المتطلبات (PRD) وتحليل SWOT:** [docs/PRD-TRACEABILITY.md](docs/PRD-TRACEABILITY.md) · **خطة التعافي من الكوارث:** [docs/DISASTER-RECOVERY.md](docs/DISASTER-RECOVERY.md)
+
 منصة رقمية تستبدل السجلات الورقية في المطابخ المركزية لشركة دار الضيافة (المطبخ الساخن، المطبخ البارد، الحلويات، الخدمات المساندة):
 
 - **Backend** — `Node.js + Express 5 + TypeScript + PostgreSQL`

@@ -10,13 +10,14 @@ export interface UserRow {
   role: Role;
   department_id: number | null;
   department_code: DepartmentCode | null;
+  branch_id: number | null;
   is_active: boolean;
   last_login_at: string | null;
   created_at: string;
 }
 
 const PUBLIC_COLUMNS = `u.id, u.employee_no, u.full_name, u.email, u.phone, u.role, u.department_id,
-  d.code AS department_code, u.is_active, u.last_login_at, u.created_at`;
+  d.code AS department_code, u.branch_id, u.is_active, u.last_login_at, u.created_at`;
 
 export async function findActiveUserForAuth(id: string) {
   const { rows } = await query<UserRow & { password_changed_at: string }>(

@@ -7,6 +7,7 @@ export interface Capa {
   capa_no: string;
   record_id: string | null;
   alert_id: string | null;
+  incident_id: string | null;
   ccp_id: string | null;
   ccp_code: string | null;
   department_id: number;

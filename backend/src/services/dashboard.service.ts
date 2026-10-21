@@ -13,7 +13,7 @@ export async function getOverview(date: string | undefined, departmentId: number
   const tz = env.APP_TIMEZONE;
   const day = date ?? null;
 
-  const [compliance, alerts, capas, certs, equipment] = await Promise.all([
+  const [compliance, alerts, capas, certs, equipment, modules] = await Promise.all([
     query<{ code: string; name_ar: string; total: number; passed: number; failed: number }>(
       `SELECT d.code, d.name_ar,
               COUNT(r.id)::int AS total,
@@ -42,6 +42,7 @@ export async function getOverview(date: string | undefined, departmentId: number
     ),
     getHealthCertificateSummary(departmentId),
     getEquipmentSummary(departmentId),
+    getModulesSummary(departmentId),
   ]);
 
   const totals = compliance.rows.reduce(
@@ -64,7 +65,53 @@ export async function getOverview(date: string | undefined, departmentId: number
     capas: capas.rows[0],
     healthCertificates: certs.summary,
     equipment: equipment.summary,
+    ...modules,
   };
+}
+
+/** Quality, confectionery data cards, staff fitness and HSE indicators (PRD modules 1, 4 and 5). */
+export async function getModulesSummary(departmentId: number | null) {
+  const tz = env.APP_TIMEZONE;
+  const [quality, labels, staff, hse] = await Promise.all([
+    query<{ open_incidents: number; open_food_safety: number; audits_30d: number; avg_audit_score: number | null; planned_audits: number }>(
+      `SELECT (SELECT COUNT(*)::int FROM incidents WHERE status <> 'CLOSED' AND ($1::smallint IS NULL OR department_id = $1)) AS open_incidents,
+              (SELECT COUNT(*)::int FROM incidents WHERE status <> 'CLOSED' AND type = 'FOOD_SAFETY_INCIDENT'
+                 AND ($1::smallint IS NULL OR department_id = $1)) AS open_food_safety,
+              (SELECT COUNT(*)::int FROM internal_audits WHERE status = 'COMPLETED' AND conducted_at >= now() - interval '30 days'
+                 AND ($1::smallint IS NULL OR department_id = $1)) AS audits_30d,
+              (SELECT ROUND(AVG(score), 1)::float FROM internal_audits WHERE status = 'COMPLETED' AND conducted_at >= now() - interval '90 days'
+                 AND ($1::smallint IS NULL OR department_id = $1)) AS avg_audit_score,
+              (SELECT COUNT(*)::int FROM internal_audits WHERE status = 'PLANNED' AND ($1::smallint IS NULL OR department_id = $1)) AS planned_audits`,
+      [departmentId],
+    ),
+    query<{ active: number; expiring_12h: number; expired_not_discarded: number }>(
+      `SELECT COUNT(*) FILTER (WHERE expires_at > now())::int AS active,
+              COUNT(*) FILTER (WHERE expires_at > now() AND expires_at <= now() + interval '12 hours')::int AS expiring_12h,
+              COUNT(*) FILTER (WHERE expires_at <= now())::int AS expired_not_discarded
+         FROM product_labels WHERE status = 'ACTIVE' AND ($1::smallint IS NULL OR department_id = $1)`,
+      [departmentId],
+    ),
+    query<{ food_handlers: number; fit: number; expiring_soon: number; unfit: number }>(
+      `WITH s AS (
+         SELECT st.id, st.status, c.expiry_date FROM staff st
+           LEFT JOIN LATERAL (SELECT expiry_date FROM health_certificates h WHERE h.staff_id = st.id OR h.employee_no = st.employee_no
+                               ORDER BY expiry_date DESC LIMIT 1) c ON TRUE
+          WHERE st.is_food_handler AND st.status <> 'TERMINATED' AND ($1::smallint IS NULL OR st.department_id = $1))
+       SELECT COUNT(*)::int AS food_handlers,
+              COUNT(*) FILTER (WHERE status = 'ACTIVE' AND expiry_date > (now() AT TIME ZONE $2)::date + $3::int)::int AS fit,
+              COUNT(*) FILTER (WHERE status = 'ACTIVE' AND expiry_date BETWEEN (now() AT TIME ZONE $2)::date
+                                                       AND (now() AT TIME ZONE $2)::date + $3::int)::int AS expiring_soon,
+              COUNT(*) FILTER (WHERE status <> 'ACTIVE' OR expiry_date IS NULL OR expiry_date < (now() AT TIME ZONE $2)::date)::int AS unfit
+         FROM s`,
+      [departmentId, tz, env.HEALTH_CERT_WARNING_DAYS],
+    ),
+    query<{ contractors_expiring: number; documents_due_review: number }>(
+      `SELECT (SELECT COUNT(*)::int FROM contractors WHERE is_approved
+                 AND LEAST(COALESCE(license_expiry, contract_end), COALESCE(contract_end, license_expiry)) <= CURRENT_DATE + 30) AS contractors_expiring,
+              (SELECT COUNT(*)::int FROM documents WHERE is_active AND review_date <= CURRENT_DATE + 30) AS documents_due_review`,
+    ),
+  ]);
+  return { quality: quality.rows[0], labels: labels.rows[0], staff: staff.rows[0], hse: hse.rows[0] };
 }
 
 export async function getComplianceTrend(days: number, departmentId: number | null) {

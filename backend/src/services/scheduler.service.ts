@@ -1,7 +1,7 @@
 import { pool, withTransaction } from '../config/database';
 import { env } from '../config/env';
 import { logger } from '../config/logger';
-import { Alert, insertAlert } from '../models/alert.model';
+import { Alert, AlertSource, insertAlert, NewAlert } from '../models/alert.model';
 import { publishAlert } from './alert.service';
 
 // Arbitrary constant: only one API instance runs the checks at a time (pg advisory lock).
@@ -78,6 +78,57 @@ export async function runComplianceChecks(): Promise<{ created: number }> {
             WHERE source_type = 'EQUIPMENT_MAINTENANCE' AND status <> 'RESOLVED' AND NOT (source_id = ANY($1::uuid[]))`,
           [equipment.rows.map((e) => e.id)],
         );
+
+        // Raise one alert per source and auto-resolve alerts whose cause has disappeared.
+        const sync = async (sourceType: AlertSource, items: (NewAlert & { sourceId: string })[]) => {
+          for (const item of items) {
+            const alert = await insertAlert(db, item);
+            if (alert) out.push(alert);
+          }
+          await db.query(
+            `UPDATE alerts SET status = 'RESOLVED', resolved_at = now()
+              WHERE source_type = $1 AND status <> 'RESOLVED' AND NOT (source_id = ANY($2::uuid[]))`,
+            [sourceType, items.map((i) => i.sourceId)],
+          );
+        };
+
+        // Expired products still marked ACTIVE must be discarded (PRD §4.4 data cards).
+        const labels = await db.query<{ id: string; label_no: string; product_name: string; batch_no: string; department_id: number }>(
+          `SELECT id, label_no, product_name, batch_no, department_id FROM product_labels WHERE status = 'ACTIVE' AND expires_at <= now()`,
+        );
+        await sync('LABEL_EXPIRY', labels.rows.map((l) => ({
+          sourceType: 'LABEL_EXPIRY' as const, sourceId: l.id, departmentId: l.department_id, severity: 'HIGH' as const,
+          title: 'منتج منتهي الصلاحية — يجب إتلافه',
+          message: `${l.product_name} (دفعة ${l.batch_no}، بطاقة ${l.label_no}) انتهت صلاحيته ولم يُسجَّل إتلافه`,
+        })));
+
+        // Contractors whose licence or contract expires within 30 days.
+        const contractors = await db.query<{ id: string; name: string; expiry: string; expired: boolean }>(
+          `SELECT id, name, LEAST(COALESCE(license_expiry, contract_end), COALESCE(contract_end, license_expiry)) AS expiry,
+                  LEAST(COALESCE(license_expiry, contract_end), COALESCE(contract_end, license_expiry)) < (now() AT TIME ZONE $1)::date AS expired
+             FROM contractors
+            WHERE is_approved
+              AND LEAST(COALESCE(license_expiry, contract_end), COALESCE(contract_end, license_expiry)) <= (now() AT TIME ZONE $1)::date + 30`,
+          [env.APP_TIMEZONE],
+        );
+        const supportDept = await db.query<{ id: number }>(`SELECT id FROM departments WHERE code = 'SUPPORT'`);
+        await sync('CONTRACTOR_EXPIRY', contractors.rows.map((c) => ({
+          sourceType: 'CONTRACTOR_EXPIRY' as const, sourceId: c.id, departmentId: supportDept.rows[0]?.id ?? null,
+          severity: c.expired ? ('HIGH' as const) : ('MEDIUM' as const),
+          title: c.expired ? 'ترخيص/عقد مقاول منتهٍ' : 'ترخيص/عقد مقاول قارب على الانتهاء',
+          message: `${c.name}: ${c.expired ? 'انتهى في' : 'ينتهي في'} ${c.expiry}`,
+        })));
+
+        // Controlled documents (IMS policies, evacuation plans…) past their review date.
+        const docs = await db.query<{ id: string; doc_no: string; title: string; department_id: number | null; review_date: string }>(
+          `SELECT id, doc_no, title, department_id, review_date FROM documents
+            WHERE is_active AND review_date IS NOT NULL AND review_date <= (now() AT TIME ZONE $1)::date`,
+          [env.APP_TIMEZONE],
+        );
+        await sync('DOCUMENT_REVIEW', docs.rows.map((d) => ({
+          sourceType: 'DOCUMENT_REVIEW' as const, sourceId: d.id, departmentId: d.department_id, severity: 'LOW' as const,
+          title: 'وثيقة تحتاج مراجعة', message: `${d.doc_no} — ${d.title}: موعد المراجعة ${d.review_date}`,
+        })));
         return out;
       });
 

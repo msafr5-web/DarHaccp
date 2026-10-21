@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import * as audit from '../controllers/audit.controller';
+import * as sweets from '../controllers/confectionery.controller';
+import * as iot from '../controllers/iot.controller';
 import * as users from '../controllers/user.controller';
 import { authenticate, authorize, authorizeCron } from '../middlewares/auth';
 import { validate } from '../middlewares/validate';
@@ -8,12 +10,15 @@ import { ok } from '../utils/http';
 import alertRoutes from './alert.routes';
 import authRoutes from './auth.routes';
 import capaRoutes from './capa.routes';
+import confectioneryRoutes from './confectionery.routes';
 import dashboardRoutes from './dashboard.routes';
 import equipmentRoutes from './equipment.routes';
 import haccpRoutes from './haccp.routes';
 import healthCertificateRoutes from './healthCertificate.routes';
+import hseRoutes from './hse.routes';
 import kitchenRoutes from './kitchen.routes';
 import qrRoutes from './qr.routes';
+import qualityRoutes from './quality.routes';
 import userRoutes from './user.routes';
 
 const api = Router();
@@ -24,6 +29,11 @@ api.use('/auth', authRoutes);
 api.get('/internal/cron/compliance', authorizeCron, async (_req, res) => {
   ok(res, await runComplianceChecks());
 });
+
+// Smart probes authenticate with their own device key (X-Device-Key), not a user session.
+api.post('/iot/readings', validate({ body: iot.readingSchema }), iot.ingestReading);
+// Printable data card opened in a new tab: protected by a short-lived signed link instead of a JWT.
+api.get('/labels/:id/print', sweets.printLabel);
 
 // Everything below requires a valid JWT.
 api.use(authenticate);
@@ -37,6 +47,9 @@ api.use('/qr', qrRoutes);
 api.use('/dashboard', dashboardRoutes);
 api.use('/health-certificates', healthCertificateRoutes);
 api.use('/equipment', equipmentRoutes);
+api.use(qualityRoutes);
+api.use(confectioneryRoutes);
+api.use(hseRoutes);
 api.get('/audit-logs', authorize('audit:read'), validate({ query: audit.auditQuery }), audit.list);
 
 export default api;

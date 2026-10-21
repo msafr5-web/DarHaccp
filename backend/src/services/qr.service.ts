@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import QRCode from 'qrcode';
+import { query } from '../config/database';
 import { env } from '../config/env';
 import { findCcpById, findTemplate } from '../models/haccp.model';
 import { findEquipment } from '../models/equipment.model';
@@ -52,6 +53,16 @@ export async function resolveQr(user: AuthUser, payload: string) {
 
   if (!template) {
     equipment = await findEquipment({ qrToken: token });
+    if (!equipment) {
+      // Product data card: scanning shows the label and whether the product may still be used.
+      const { rows } = await query<{ id: string; label_no: string; product_name: string; batch_no: string; status: string;
+        produced_at: string; expires_at: string; expired: boolean }>(
+        `SELECT id, label_no, product_name, batch_no, status, produced_at, expires_at, expires_at <= now() AS expired
+           FROM product_labels WHERE qr_token = $1`,
+        [token],
+      );
+      if (rows[0]) return { kind: 'LABEL' as const, label: rows[0] };
+    }
     if (!equipment || !equipment.is_active) throw AppError.notFound('QR code');
     if (!equipment.form_template_id) throw AppError.unprocessable(`No check form is linked to equipment ${equipment.code}`);
     if (equipment.status === 'OUT_OF_SERVICE') {
@@ -83,7 +94,8 @@ export async function resolveQr(user: AuthUser, payload: string) {
       fields: template.fields.map((f) => {
         const limits = effectiveLimits(f, ccp);
         const unit = f.ccpMeasurement && ccp ? ccp.unit : f.unit;
-        return { ...f, unit, min: limits.min, max: limits.max, limitText: describeLimits(limits, unit) || undefined };
+        const limitText = f.durationFrom && f.maxMinutes ? `المدة ≤ ${f.maxMinutes} دقيقة` : describeLimits(limits, unit) || undefined;
+        return { ...f, unit, min: limits.min, max: limits.max, limitText };
       }),
     },
     ccp: ccp && {
@@ -92,6 +104,7 @@ export async function resolveQr(user: AuthUser, payload: string) {
       nameAr: ccp.name_ar,
       nameEn: ccp.name_en,
       hazard: ccp.hazard,
+      hazardType: ccp.hazard_type,
       criticalLimit: describeLimits({ min: ccp.min_value ?? undefined, max: ccp.max_value ?? undefined }, ccp.unit),
       correctiveAction: ccp.corrective_action,
     },

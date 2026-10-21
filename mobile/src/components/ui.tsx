@@ -68,6 +68,48 @@ export function Stat({ label, value, color = colors.text }: { label: string; val
   );
 }
 
+/** Single-choice pill selector (filters, enums). */
+export function Chips<T extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: readonly { value: T; label: string; color?: string }[];
+  value: T | null | undefined;
+  onChange: (v: T) => void;
+}) {
+  return (
+    <View style={[styles.row, { flexWrap: 'wrap', marginBottom: 12 }]}>
+      {options.map((o) => {
+        const active = o.value === value;
+        const c = o.color ?? colors.primary;
+        return (
+          <Pressable
+            key={o.value}
+            onPress={() => onChange(o.value)}
+            style={{
+              paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, borderWidth: 1.5,
+              borderColor: active ? c : colors.border, backgroundColor: active ? `${c}1A` : '#fff',
+            }}
+          >
+            <Text style={{ color: active ? c : colors.text, fontWeight: '700', fontSize: 13 }}>{o.label}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+/** Offline indicator for screens showing cached data. */
+export function OfflineNote({ show }: { show: boolean }) {
+  if (!show) return null;
+  return (
+    <View style={{ backgroundColor: colors.warningLight, borderRadius: 10, padding: 10, marginBottom: 12 }}>
+      <Text style={{ color: colors.warning, fontWeight: '700', textAlign: textStart }}>📴 دون اتصال — تُعرض آخر بيانات محفوظة</Text>
+    </View>
+  );
+}
+
 export function Loading() {
   return (
     <View style={styles.center}>
