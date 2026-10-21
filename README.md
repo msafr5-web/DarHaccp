@@ -132,3 +132,18 @@ EXPO_PUBLIC_API_URL=http://<IP-جهازك>:4000/api/v1 npx expo start
 
 ## الاختبار
 تم اختبار الـ API من البداية للنهاية (54 فحصاً) على PostgreSQL مضمّن: الصلاحيات وعزل الأقسام، مسح QR، سجلات PASS/FAIL، التنبيهات وCAPA، عدم قابلية التعديل، التدقيق، ولوحات التحكم.
+
+## النشر على Vercel
+المشروع منشور كـ **مشروع Vercel واحد** (`dar-haccp`) على نطاق واحد:
+
+| المسار | المحتوى |
+|---|---|
+| `https://dar-haccp.vercel.app/` | تطبيق الويب (PWA قابل للتثبيت) |
+| `https://dar-haccp.vercel.app/api/v1/...` | الـ API (Serverless Function من `api/index.js`) |
+| `https://dar-haccp.vercel.app/health` | فحص حالة الخادم وقاعدة البيانات |
+
+- الإعدادات في `vercel.json` بجذر المستودع؛ كل `git push` على `main` ينشر تلقائياً، والبناء يطبّق ترحيلات قاعدة البيانات أولاً.
+- قاعدة البيانات: Neon Postgres (`dar-haccp-db`) مربوطة بالمشروع وتوفّر `DATABASE_URL`.
+- متغيرات البيئة المطلوبة: `JWT_SECRET`, `CRON_SECRET`, `SEED_ADMIN_PASSWORD`, `CORS_ORIGINS`, `DB_POOL_MAX`, `APP_TIMEZONE`.
+- **لا تحذف المشروع `dar-haccp` ولا تفصل عنه قاعدة البيانات** — الواجهة والـ API في المشروع نفسه.
+- صفحة الدخول تفحص `/api/v1/health` تلقائياً وتعرض حالة الاتصال.

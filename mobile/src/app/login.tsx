@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
-import { errorMessage } from '@/api/client';
+import { checkServerHealth, errorMessage } from '@/api/client';
 import { InstallPrompt } from '@/components/InstallPrompt';
 import { Button } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
@@ -59,6 +59,16 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [server, setServer] = useState<'checking' | 'ok' | 'degraded' | 'unreachable'>('checking');
+
+  // Detect a down server / database before the user even tries to sign in.
+  useEffect(() => {
+    let active = true;
+    checkServerHealth().then((s) => active && setServer(s));
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const submit = async () => {
     if (!email || !password || busy) return;
@@ -68,10 +78,18 @@ export default function LoginScreen() {
       await signIn(email, password);
     } catch (e) {
       setError(errorMessage(e));
+      checkServerHealth().then(setServer);
     } finally {
       setBusy(false);
     }
   };
+
+  const serverBanner =
+    server === 'unreachable'
+      ? 'الخادم غير متاح حالياً — لا يمكن تسجيل الدخول. يرجى إبلاغ مسؤول النظام.'
+      : server === 'degraded'
+        ? 'قاعدة البيانات غير متاحة حالياً — يرجى المحاولة بعد قليل أو إبلاغ مسؤول النظام.'
+        : null;
 
   const brand = (
     <View style={[s.brand, !wide && { alignItems: 'center', marginBottom: 24 }]}>
@@ -115,6 +133,12 @@ export default function LoginScreen() {
       <View style={s.card}>
         <Text style={s.cardTitle}>مرحباً بك 👋</Text>
         <Text style={s.cardSubtitle}>سجّل دخولك لمتابعة سجلات سلامة الغذاء</Text>
+
+        {serverBanner ? (
+          <View style={[s.errorBox, { marginBottom: 16 }]}>
+            <Text style={s.errorText}>🔌 {serverBanner}</Text>
+          </View>
+        ) : null}
 
         <Field
           label="البريد الإلكتروني"
@@ -174,7 +198,12 @@ export default function LoginScreen() {
       </View>
 
       <InstallPrompt />
-      <Text style={s.footer}>© دار الضيافة · نظام إدارة سلامة الغذاء · الإصدار 1.0</Text>
+      <View style={[s.row, { justifyContent: 'center', gap: 6 }]}>
+        <View style={[s.dot, { backgroundColor: server === 'ok' ? '#32D583' : server === 'checking' ? '#A9CDB9' : '#F97066' }]} />
+        <Text style={s.footer}>
+          {server === 'ok' ? 'الخادم متصل' : server === 'checking' ? 'جارٍ فحص الاتصال…' : 'الخادم غير متاح'} · © دار الضيافة · الإصدار 1.0
+        </Text>
+      </View>
     </View>
   );
 
@@ -241,5 +270,6 @@ const s = StyleSheet.create({
   demoChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, borderWidth: 1, borderColor: colors.border, backgroundColor: '#fff' },
   demoChipActive: { borderColor: colors.primary, backgroundColor: colors.primaryLight },
   demoChipText: { fontSize: 13, color: colors.text, fontWeight: '600' },
-  footer: { color: '#A9CDB9', fontSize: 12, textAlign: 'center', marginTop: 6 },
+  footer: { color: '#A9CDB9', fontSize: 12, textAlign: 'center' },
+  dot: { width: 8, height: 8, borderRadius: 4 },
 });

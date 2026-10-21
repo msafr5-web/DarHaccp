@@ -48,7 +48,7 @@
     ],
     "scheme": "darhaccp",
     "extra": {
-      "apiUrl": "https://dar-haccp-api.vercel.app/api/v1"
+      "apiUrl": "https://dar-haccp.vercel.app/api/v1"
     },
     "experiments": {
       "typedRoutes": false

@@ -31,7 +31,8 @@ export function createApp() {
     });
   });
 
-  app.get('/health', async (_req, res) => {
+  // Also exposed under the API prefix so clients can check it with the same base URL.
+  app.get(['/health', '/api/v1/health'], async (_req, res) => {
     try {
       await checkDatabaseConnection();
       res.json({ status: 'ok', database: 'up', time: new Date().toISOString() });

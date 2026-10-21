@@ -20,6 +20,8 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
   if (request.method !== 'GET' || url.origin !== self.location.origin) return;
+  // The API shares this domain: never serve or cache it from the service worker.
+  if (url.pathname.startsWith('/api/') || url.pathname === '/health') return;
 
   // Pages: network first so updates arrive immediately, cached shell when offline.
   if (request.mode === 'navigate') {

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "npm install --prefix backend && npm install --prefix mobile",
+  "buildCommand": "npm run vercel-build --prefix backend && cd mobile && npx expo export --platform web && node scripts/pwa.mjs",
+  "outputDirectory": "mobile/dist",
+  "functions": {
+    "api/index.js": { "includeFiles": "backend/dist/**", "maxDuration": 60 }
+  },
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "/api" },
+    { "source": "/health", "destination": "/api" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ],
+  "headers": [
+    { "source": "/sw.js", "headers": [{ "key": "Cache-Control", "value": "no-cache" }, { "key": "Service-Worker-Allowed", "value": "/" }] },
+    { "source": "/manifest.webmanifest", "headers": [{ "key": "Content-Type", "value": "application/manifest+json" }] },
+    { "source": "/_expo/static/(.*)", "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }] }
+  ],
+  "crons": [{ "path": "/api/v1/internal/cron/compliance", "schedule": "0 5 * * *" }]
+}

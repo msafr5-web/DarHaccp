@@ -1,8 +1,26 @@
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 
-/** API base URL: EXPO_PUBLIC_API_URL (build-time env) or app.json `extra.apiUrl`. */
+/**
+ * API base URL. The web app is served by the same Vercel project as the API, so it uses a
+ * relative path (no hard-coded domain, no CORS). Native builds need an absolute URL:
+ * EXPO_PUBLIC_API_URL (build-time env) or app.json `extra.apiUrl`.
+ */
 export const API_URL: string =
-  process.env.EXPO_PUBLIC_API_URL ?? (Constants.expoConfig?.extra?.apiUrl as string | undefined) ?? 'http://localhost:4000/api/v1';
+  process.env.EXPO_PUBLIC_API_URL ??
+  (Platform.OS === 'web' ? '/api/v1' : (Constants.expoConfig?.extra?.apiUrl as string | undefined)) ??
+  'http://localhost:4000/api/v1';
+
+/** Server + database reachability, used by the login screen to explain connection problems up front. */
+export async function checkServerHealth(): Promise<'ok' | 'degraded' | 'unreachable'> {
+  try {
+    const res = await fetch(`${API_URL}/health`, { headers: { Accept: 'application/json' } });
+    if (res.ok) return 'ok';
+    return res.status === 503 ? 'degraded' : 'unreachable';
+  } catch {
+    return 'unreachable';
+  }
+}
 
 export class ApiError extends Error {
   constructor(

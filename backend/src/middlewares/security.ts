@@ -15,17 +15,29 @@ export const helmetMiddleware = helmet({
   referrerPolicy: { policy: 'no-referrer' },
 });
 
-export const corsMiddleware = cors({
-  origin(origin, callback) {
-    // Native mobile apps send no Origin header — allow them; browsers must be whitelisted.
-    if (!origin || env.CORS_ORIGINS.includes(origin)) return callback(null, true);
-    callback(new AppError(403, 'CORS_REJECTED', `Origin ${origin} is not allowed`));
-  },
+const corsOptions = {
   credentials: true,
   methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id'],
   exposedHeaders: ['X-Request-Id', 'RateLimit-Remaining'],
   maxAge: 600,
+};
+
+const isSameOrigin = (origin: string, host: string | undefined) => {
+  try {
+    return !!host && new URL(origin).host === host;
+  } catch {
+    return false;
+  }
+};
+
+export const corsMiddleware = cors((req, callback) => {
+  const origin = req.headers.origin;
+  // Allowed: native apps (no Origin), the web app served from this same domain, and the allow-list.
+  if (!origin || isSameOrigin(origin, req.headers.host) || env.CORS_ORIGINS.includes(origin)) {
+    return callback(null, { ...corsOptions, origin: true });
+  }
+  callback(new AppError(403, 'CORS_REJECTED', `Origin ${origin} is not allowed`));
 });
 
 const rateLimitHandler = (_req: Request, _res: Response, next: NextFunction) =>
