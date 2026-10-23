@@ -47,6 +47,7 @@ const SECTIONS: { title: string; links: ModuleLink[] }[] = [
   {
     title: 'الخدمات المساندة والسلامة (HSE)',
     links: [
+      { icon: '📚', title: 'دليل الشهادة الصحية', description: 'ملخص المتطلبات · الأنشطة المستهدفة · الفحوصات الطبية · خطوات الإصدار — بمصادرها', href: '/health-guide', permission: 'staff:read' },
       { icon: '🪪', title: 'سجل الشهادات الصحية (بلدي)', description: 'جدول المنشأة بأعمدة بلدي — حالة الشهادة محسوبة، استيراد وتصدير Excel', href: '/health-register', permission: 'staff:read' },
       { icon: '👷', title: 'سجل العاملين والشهادات الصحية', description: 'الصلاحية للعمل، شهادة البلدية، الفحص اليومي', href: '/staff', permission: 'staff:read' },
       { icon: '🤝', title: 'المقاولون ومكافحة الآفات', description: 'التراخيص والعقود وتقييم الأداء', href: '/contractors', permission: 'contractor:read' },

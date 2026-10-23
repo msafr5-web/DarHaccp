@@ -51,3 +51,41 @@ A pending exam is never shown as a valid certificate, even when an expiry date i
 | Expired certificate, or unfit worker | HIGH |
 | Exam result pending, or certificate expiring within 7 days | MEDIUM |
 | Certificate expiring within 30 days | LOW |
+
+## دليل الشهادة الصحية (Health certificate guide)
+
+Screen: Modules → **📚 دليل الشهادة الصحية** (`/health-guide`). It has the four tabs of the establishment's workbook.
+The data is stored in the database as reference tables that every company reads and that only the platform administrator edits
+(console → **📚 دليل الشهادة الصحية**).
+
+| Tab | Table | Content |
+|---|---|---|
+| ملخص المتطلبات | `hc_requirements` | Fee 60 SAR, validity one year, renewal 60 days before expiry, fit medical report, the verifications (profession, shop licence, licence activity), the sponsorship declaration, health education (the 12 cities where it is active, and the retake rule 150 SAR), the Riyadh and Eastern region redirect, printing, support, and penalties. |
+| الأنشطة المستهدفة | `hc_activities` | Restaurants, cafés, bakeries, food retail, men's salons, women's beauty salons, laundries, and relaxation and body-care centres. Each has keywords used to suggest an activity for every worker. |
+| الفحوصات الطبية | `hc_medical_tests` | Clinical examination, stool, blood and urine tests, chest X-ray, and throat swab. |
+| خطوات الإصدار | `hc_issuance_steps` | The nine steps of the Balady user guide. Five of them are milestones that the register tracks. |
+
+**Sources and reliability.** Every item points to the page it was read from (`hc_sources`, read on 2026-10-23) and carries a level:
+
+- **رسمي (OFFICIAL):** stated on a Ministry of Municipal, Rural Affairs and Housing / Balady page.
+- **منقول (REPORTED):** published by medical centres as their practice. The official pages do not list the individual tests; they only require a fit report from a centre approved by the Ministry of Health. The tab says so, and every test is marked non-official.
+- **غير مؤكَّد (UNVERIFIED):** a reasonable reading that no page states, for example the central-kitchen activity. It carries a note telling the user to check the licence activity.
+
+Where the pages give no value, the guide says so rather than filling the gap. This applies to fine amounts. The list of approved medical centres could not be read either, so it is not included.
+
+**Effect on the register.**
+
+- *Activity:* each worker's activity is suggested from the profession and section text, and can be set by hand.
+- *Renewal window:* «التجديد متاح» appears when 60 days or fewer remain, or the certificate has expired.
+- *Process tracker:* new fields per worker: city, Balady request number, health-education result, and the date the fee was paid. From them the system computes the **next step**:
+  - Request, medical exam, health education, fee, and issue.
+  - Health education is skipped outside the active cities.
+  - An unfit result or a failed education test blocks the steps after it.
+  - A certificate in force means every step is done.
+- These tracking fields are not columns of the Balady sheet. They are not in the Excel export, and re-importing the sheet keeps them.
+- *Privacy:* the system stores **no medical test results**, only the official fit / pending / unfit outcome.
+
+**Keeping it current.**
+
+- The platform administrator edits any item. It is stamped with the verification date and is no longer touched by automatic updates.
+- Items the administrator has not edited are refreshed when a new revision of `healthGuideSeed.ts` is deployed.

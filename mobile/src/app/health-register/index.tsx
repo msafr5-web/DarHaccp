@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, Text, useWindowDimensions, View } from 'react-native';
+import { router } from 'expo-router';
 import { api, errorMessage } from '@/api/client';
+import type { HealthGuide } from '@/api/types';
 import { ExcelSync } from '@/components/ExcelSync';
 import { Badge, Button, Card, Chips, Empty, Input, OfflineNote, Stat, styles } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
@@ -28,7 +30,26 @@ interface Entry {
   cert_status: CertStatus;
   days_remaining: number | null;
   notes: string | null;
+  city: string | null;
+  activity_code: string | null;
+  activity_name: string | null;
+  activity_guessed: boolean;
+  request_no: string | null;
+  edu_status: 'PENDING' | 'PASSED' | 'FAILED';
+  edu_required: boolean;
+  fee_paid_on: string | null;
+  renewal_open: boolean;
+  steps: { code: string; step_no: number; title: string; state: StepState; note?: string }[];
+  next_step: { code: string; step_no: number; title: string; state: StepState; note?: string } | null;
+  progress: { done: number; total: number };
 }
+
+type StepState = 'DONE' | 'CURRENT' | 'PENDING' | 'SKIPPED' | 'BLOCKED';
+const STEP: Record<StepState, { icon: string; color: string }> = {
+  DONE: { icon: '✓', color: colors.success }, CURRENT: { icon: '●', color: colors.primary }, PENDING: { icon: '○', color: colors.muted },
+  SKIPPED: { icon: '—', color: colors.muted }, BLOCKED: { icon: '✕', color: colors.danger },
+};
+const EDU = { PENDING: { label: 'لم يجتز بعد', color: colors.warning }, PASSED: { label: 'اجتاز', color: colors.success }, FAILED: { label: 'رسب', color: colors.danger } } as const;
 
 const EXAM: Record<ExamStatus, { label: string; color: string }> = {
   FIT: { label: 'سليم (معتمد)', color: colors.success },
@@ -60,6 +81,7 @@ const COLUMNS: { title: string; width: number; cell: (e: Entry) => string }[] = 
   { title: 'تاريخ انتهاء الشهادة', width: 100, cell: (e) => dmy(e.cert_expiry) },
   { title: 'حالة الشهادة', width: 115, cell: (e) => CERT[e.cert_status].label },
   { title: 'ملاحظات التنفيذ', width: 180, cell: (e) => e.notes ?? '' },
+  { title: 'الخطوة التالية (محسوبة)', width: 190, cell: (e) => (e.next_step ? e.next_step.title : 'مكتمل') },
 ];
 
 function daysText(e: Entry) {
@@ -78,7 +100,10 @@ function EntryForm({ entry, branches, onDone, onCancel }: {
     birthDate: entry?.birth_date ? dmy(entry.birth_date) : '', profession: entry?.profession ?? '', mobile: entry?.mobile ?? '',
     examDate: entry?.exam_date ?? '', examStatus: (entry?.exam_status ?? 'PENDING') as ExamStatus, certExpiry: entry?.cert_expiry ?? '',
     notes: entry?.notes ?? '',
+    city: entry?.city ?? '', activityCode: entry?.activity_code ?? '', requestNo: entry?.request_no ?? '',
+    eduStatus: (entry?.edu_status ?? 'PENDING') as 'PENDING' | 'PASSED' | 'FAILED', feePaidOn: entry?.fee_paid_on ?? '',
   });
+  const { data: guide } = useApi<HealthGuide>('/health-guide');
   const [busy, setBusy] = useState<'save' | 'delete' | 'reveal' | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -91,6 +116,7 @@ function EntryForm({ entry, branches, onDone, onCancel }: {
     const body = {
       ...f, idNumber: f.idNumber.trim() || undefined, internalSection: f.internalSection || null, profession: f.profession || null,
       mobile: f.mobile || null, birthDate: f.birthDate || null, examDate: f.examDate || null, certExpiry: f.certExpiry || null, notes: f.notes || null,
+      city: f.city.trim() || null, activityCode: f.activityCode || null, requestNo: f.requestNo.trim() || null, feePaidOn: f.feePaidOn.trim() || null,
     };
     try {
       const r = entry
@@ -147,6 +173,41 @@ function EntryForm({ entry, branches, onDone, onCancel }: {
         <View style={{ flex: 1, minWidth: 160 }}><Input label="تاريخ انتهاء الشهادة" value={f.certExpiry} onChangeText={set('certExpiry')} placeholder="YYYY-MM-DD" /></View>
       </View>
       <Input label="ملاحظات التنفيذ" value={f.notes} onChangeText={set('notes')} multiline />
+
+      <View style={{ borderTopWidth: 1, borderColor: '#EAECF0', paddingTop: 10, marginTop: 4 }}>
+        <Text style={[styles.title, { fontSize: 15 }]}>📌 متابعة إصدار الشهادة</Text>
+        <Text style={[styles.muted, { marginBottom: 8 }]}>
+          بيانات تساعد النظام على تحديد «الخطوة التالية» لهذا العامل (ليست أعمدة في ملف بلدي).{' '}
+          <Text style={{ color: colors.primary, fontWeight: '700' }} onPress={() => router.push('/health-guide')}>افتح دليل الشهادة الصحية</Text>
+        </Text>
+        <View style={[styles.row, { flexWrap: 'wrap' }]}>
+          <View style={{ flex: 1, minWidth: 160 }}>
+            <Input label="مدينة المنشأة" value={f.city} onChangeText={set('city')} placeholder="الرياض"
+              hint={guide ? (guide.eduCities.some((c) => f.city.trim() && c.includes(f.city.trim())) ? 'التثقيف الصحي مفعّل في هذه المدينة' : f.city.trim() ? 'التثقيف الصحي غير مطلوب في هذه المدينة' : undefined) : undefined} />
+          </View>
+          <View style={{ flex: 1, minWidth: 160 }}><Input label="رقم طلب بلدي" value={f.requestNo} onChangeText={set('requestNo')} placeholder="يصل برسالة SMS" /></View>
+          <View style={{ flex: 1, minWidth: 160 }}><Input label="تاريخ سداد الرسوم (60 ريالاً)" value={f.feePaidOn} onChangeText={set('feePaidOn')} placeholder="YYYY-MM-DD" /></View>
+        </View>
+        <Text style={styles.label}>اختبار التثقيف الصحي</Text>
+        <Chips value={f.eduStatus} onChange={(v) => setF((s) => ({ ...s, eduStatus: v }))}
+          options={(Object.keys(EDU) as (keyof typeof EDU)[]).map((k) => ({ value: k, label: EDU[k].label, color: EDU[k].color }))} />
+        {guide ? (
+          <>
+            <Text style={styles.label}>النشاط (حسب رخصة المنشأة){entry?.activity_guessed && !f.activityCode ? ` — المقترح: ${entry.activity_name}` : ''}</Text>
+            <Chips value={f.activityCode || 'AUTO'} onChange={(v) => setF((s) => ({ ...s, activityCode: v === 'AUTO' ? '' : v }))}
+              options={[{ value: 'AUTO', label: 'اقتراح تلقائي' }, ...guide.activities.map((a) => ({ value: a.code, label: a.name_ar }))]} />
+          </>
+        ) : null}
+        {entry ? (
+          <View style={{ marginTop: 4 }}>
+            {entry.steps.map((st) => (
+              <Text key={st.code} style={{ fontSize: 13, color: STEP[st.state].color, fontWeight: st.state === 'CURRENT' || st.state === 'BLOCKED' ? '800' : '400', paddingVertical: 1 }}>
+                {STEP[st.state].icon} {st.step_no}. {st.title}{st.note ? ` — ${st.note}` : ''}
+              </Text>
+            ))}
+          </View>
+        ) : null}
+      </View>
       {error ? <Text style={{ color: colors.danger, marginBottom: 8, textAlign: textStart }}>{error}</Text> : null}
       <View style={[styles.row, { flexWrap: 'wrap' }]}>
         <View style={{ flex: 1, minWidth: 140 }}><Button title="حفظ" loading={busy === 'save'} onPress={() => void save()}
@@ -189,13 +250,26 @@ function RegisterTable({ rows, onOpen }: { rows: Entry[]; onOpen: (e: Entry) => 
               {COLUMNS.map((c, n) => {
                 const isStatus = n === 12;
                 const isExam = n === 10;
+                const isNext = n === 14;
                 const st = isStatus ? CERT[e.cert_status] : isExam ? EXAM[e.exam_status] : null;
+                if (isNext) {
+                  const ns = e.next_step;
+                  return (
+                    <View key={c.title} style={{ width: c.width, padding: 8, justifyContent: 'center', borderLeftWidth: 1, borderColor: '#F2F4F7' }}>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: ns ? STEP[ns.state].color : colors.success }} numberOfLines={2}>
+                        {ns ? `${STEP[ns.state].icon} ${ns.title}` : '✓ مكتمل'}
+                      </Text>
+                      <Text style={{ fontSize: 10, color: colors.muted }}>{e.progress.done}/{e.progress.total} خطوات</Text>
+                    </View>
+                  );
+                }
                 return (
                   <View key={c.title} style={{ width: c.width, padding: 8, justifyContent: 'center', borderLeftWidth: 1, borderColor: '#F2F4F7' }}>
                     {st ? (
                       <View style={{ alignItems: 'center' }}>
                         <Badge text={c.cell(e)} color={st.color} />
                         {isStatus && e.days_remaining !== null ? <Text style={{ fontSize: 10, color: colors.muted, marginTop: 2 }}>{daysText(e)}</Text> : null}
+                        {isStatus && e.renewal_open ? <Text style={{ fontSize: 10, fontWeight: '800', color: colors.primary }}>🔁 التجديد متاح</Text> : null}
                       </View>
                     ) : (
                       <Text style={{ fontSize: 13, color: colors.text, textAlign: n === 0 ? 'center' : textStart, fontWeight: n === 4 ? '700' : '400' }}
@@ -239,6 +313,7 @@ export default function HealthRegisterScreen() {
   const rows = all.filter((e) => (status === 'ALL' || e.cert_status === status) && (branch === 'ALL' || e.branch_name === branch)
     && (!q || [e.worker_name, e.profession, e.internal_section, e.mobile, e.id_number_masked.slice(-4), e.notes].some((x) => x?.toLowerCase().includes(q))));
   const wide = width >= 900;
+  const renewalOpen = all.filter((e) => e.renewal_open).length;
 
   return (
     <ScrollView contentContainerStyle={[styles.page, wide && { maxWidth: 1600 }]} refreshControl={<RefreshControl refreshing={loading} onRefresh={reload} />}
@@ -248,6 +323,7 @@ export default function HealthRegisterScreen() {
         <Text style={styles.title}>سجل متابعة الشهادات الصحية والبيانات الوظيفية (منصة بلدي)</Text>
         <View style={[styles.row, { flexWrap: 'wrap', marginTop: 6 }]}>
           <Stat label="العاملون" value={all.length} />
+          <Stat label="التجديد متاح" value={renewalOpen} color={renewalOpen ? colors.primary : colors.muted} />
           {(Object.keys(CERT) as CertStatus[]).map((k) => (
             <Pressable key={k} onPress={() => setStatus(status === k ? 'ALL' : k)}>
               <Stat label={CERT[k].label} value={counts[k] ?? 0} color={(counts[k] ?? 0) ? CERT[k].color : colors.muted} />
@@ -256,6 +332,8 @@ export default function HealthRegisterScreen() {
         </View>
       </Card>
 
+      <Button title="📚 دليل الشهادة الصحية (المتطلبات · الأنشطة · الفحوصات · الخطوات)" variant="outline" onPress={() => router.push('/health-guide')} />
+      <View style={{ height: 8 }} />
       <ExcelSync
         intro="صدّر السجل بنفس أعمدة ملف بلدي، أو استورد ملف المنشأة (Excel أو CSV) لإضافة العاملين وتحديثهم بحسب رقم الهوية — مع معاينة الأخطاء والملاحظات قبل التطبيق."
         exportPath="/health-register/export.xlsx" exportName={`سجل-الشهادات-الصحية-${new Date().toISOString().slice(0, 10)}.xlsx`}
@@ -301,6 +379,13 @@ export default function HealthRegisterScreen() {
               الفحص {dmy(e.exam_date)} — {EXAM[e.exam_status].label} · تنتهي {dmy(e.cert_expiry)} {e.days_remaining !== null ? `(${daysText(e)})` : ''}
             </Text>
             {e.notes ? <Text style={[styles.muted, { color: colors.text }]}>📝 {e.notes}</Text> : null}
+            {e.activity_name ? <Text style={styles.muted}>النشاط: {e.activity_name}{e.activity_guessed ? ' (مقترح)' : ''}</Text> : null}
+            <View style={[styles.row, { marginTop: 6, flexWrap: 'wrap' }]}>
+              {e.renewal_open ? <Badge text="🔁 التجديد متاح" color={colors.primary} /> : null}
+              <Badge text={e.next_step ? `${STEP[e.next_step.state].icon} ${e.next_step.title}` : '✓ الإجراءات مكتملة'}
+                color={e.next_step ? STEP[e.next_step.state].color : colors.success} />
+              <Text style={styles.muted}>{e.progress.done}/{e.progress.total}</Text>
+            </View>
           </Card>
         </Pressable>
       ))}

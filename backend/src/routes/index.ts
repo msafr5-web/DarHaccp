@@ -23,6 +23,7 @@ import qualityRoutes from './quality.routes';
 import userRoutes from './user.routes';
 import stockRoutes from './stock.routes';
 import healthRegisterRoutes from '../controllers/healthRegister.controller';
+import * as guide from '../controllers/healthGuide.controller';
 import { companyRoutes, platformRoutes, publicRoutes } from './tenant.routes';
 import { runAsSystem } from '../config/database';
 
@@ -66,6 +67,7 @@ api.use(confectioneryRoutes);
 api.use(hseRoutes);
 api.use(stockRoutes);
 api.use(healthRegisterRoutes);
+api.get('/health-guide', authorize('staff:read'), guide.getGuide);
 api.get('/audit-logs', authorize('audit:read'), validate({ query: audit.auditQuery }), audit.list);
 
 export default api;

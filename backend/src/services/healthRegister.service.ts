@@ -3,6 +3,7 @@ import { DbContext, query, withTransaction } from '../config/database';
 import { env } from '../config/env';
 import { AppError } from '../utils/AppError';
 import { blindIndex, decrypt, encrypt } from '../utils/crypto';
+import { loadProcessContext, guessActivity, trackProcess, type ProcessContext, type ProcessStep } from './healthGuide.service';
 import { localDate } from './record.service';
 
 /**
@@ -24,6 +25,8 @@ export const CERT_LABELS: Record<CertStatus, string> = {
 };
 
 const WARN_DAYS = () => env.HEALTH_CERT_WARNING_DAYS;
+/** Official renewal window: a certificate can be renewed 60 days before it expires (MOMAH). */
+export const RENEWAL_WINDOW_DAYS = 60;
 const DAY = 86_400_000;
 const dayDiff = (a: string, b: string) => Math.round((Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / DAY);
 
@@ -103,6 +106,12 @@ export interface RegisterInput {
   examStatus?: unknown;
   certExpiry?: unknown;
   notes?: string | null;
+  // Process tracking (issuance steps) — not columns of the Balady sheet.
+  city?: string | null;
+  activityCode?: string | null;
+  requestNo?: string | null;
+  eduStatus?: string | null;
+  feePaidOn?: unknown;
 }
 
 interface Normalized {
@@ -119,6 +128,11 @@ interface Normalized {
   exam_status: ExamStatus;
   cert_expiry: string | null;
   notes: string | null;
+  city: string | null;
+  activity_code: string | null;
+  request_no: string | null;
+  edu_status: 'PENDING' | 'PASSED' | 'FAILED';
+  fee_paid_on: string | null;
 }
 
 /** Field rules shared by the form and the import. Returns refusals (errors) and advisories (warnings). */
@@ -162,6 +176,14 @@ export function normalizeEntry(i: RegisterInput, opts: { requireId: boolean; tod
   if (expiry === 'INVALID') errors.push(`تاريخ انتهاء الشهادة غير صالح "${clean(i.certExpiry)}"`);
   else if (expiry && exam && exam !== 'INVALID' && expiry <= exam) errors.push(`تاريخ انتهاء الشهادة ${expiry} يجب أن يكون بعد تاريخ الفحص ${exam}`);
 
+  const requestNo = clean(i.requestNo).replace(/\s/g, '');
+  if (requestNo && !/^[0-9A-Za-z-]{3,30}$/.test(requestNo)) errors.push(`رقم الطلب غير صالح "${requestNo}" (أحرف وأرقام، 3–30)`);
+  const eduRaw = clean(i.eduStatus).toUpperCase();
+  if (eduRaw && !['PENDING', 'PASSED', 'FAILED'].includes(eduRaw)) errors.push(`حالة التثقيف الصحي غير معروفة "${eduRaw}"`);
+  const feePaid = parseDate(i.feePaidOn);
+  if (feePaid === 'INVALID') errors.push(`تاريخ سداد الرسوم غير صالح "${clean(i.feePaidOn)}"`);
+  else if (feePaid && feePaid > today) errors.push(`تاريخ سداد الرسوم ${feePaid} في المستقبل`);
+
   const status = (examStatus === 'INVALID' ? null : examStatus) ?? 'PENDING';
   if (status === 'FIT' && !expiry) warnings.push('الفحص سليم دون تاريخ انتهاء للشهادة — ستُعدّ «تجديد مطلوب» حتى يُدخل التاريخ');
   if (status === 'PENDING' && expiry && expiry !== 'INVALID') {
@@ -182,6 +204,11 @@ export function normalizeEntry(i: RegisterInput, opts: { requireId: boolean; tod
     exam_status: status,
     cert_expiry: expiry === 'INVALID' ? null : expiry,
     notes: text(i.notes, 2000, 'ملاحظات التنفيذ'),
+    city: text(i.city, 60, 'المدينة'),
+    activity_code: clean(i.activityCode) || null,
+    request_no: requestNo || null,
+    edu_status: (eduRaw || 'PENDING') as Normalized['edu_status'],
+    fee_paid_on: feePaid === 'INVALID' ? null : feePaid,
   };
   return { value, errors, warnings };
 }
@@ -207,21 +234,45 @@ export interface RegisterRow {
   days_remaining: number | null;
   notes: string | null;
   updated_at: string;
+  // Process tracking and what the guide derives from it.
+  city: string | null;
+  activity_code: string | null;
+  activity_name: string | null;
+  activity_guessed: boolean;
+  request_no: string | null;
+  edu_status: 'PENDING' | 'PASSED' | 'FAILED';
+  edu_required: boolean;
+  fee_paid_on: string | null;
+  /** The official renewal window (60 days before expiry, or already expired) is open. */
+  renewal_open: boolean;
+  steps: ProcessStep[];
+  next_step: ProcessStep | null;
+  progress: { done: number; total: number };
 }
 
-interface DbRow extends Omit<RegisterRow, 'id_number_masked' | 'cert_status' | 'days_remaining'> {
+interface DbRow extends Omit<RegisterRow, 'id_number_masked' | 'cert_status' | 'days_remaining' | 'activity_name' | 'activity_guessed' | 'edu_required'
+  | 'renewal_open' | 'steps' | 'next_step' | 'progress'> {
   id_number_last4: string;
   id_number_enc: string;
 }
 
 const COLS = `id, serial, branch_name, balady_license_no, internal_section, worker_name, id_number_last4, id_number_enc, id_type,
   to_char(birth_date, 'YYYY-MM-DD') AS birth_date, profession, mobile, to_char(exam_date, 'YYYY-MM-DD') AS exam_date, exam_status,
-  to_char(cert_expiry, 'YYYY-MM-DD') AS cert_expiry, notes, updated_at`;
+  to_char(cert_expiry, 'YYYY-MM-DD') AS cert_expiry, notes, updated_at,
+  city, activity_code, request_no, edu_status, to_char(fee_paid_on, 'YYYY-MM-DD') AS fee_paid_on`;
 
-function present(r: DbRow, today: string): RegisterRow {
+function present(r: DbRow, today: string, ctx: ProcessContext): RegisterRow {
   const { id_number_last4, id_number_enc: _enc, ...rest } = r;
   const s = certStatus(r.exam_status, r.cert_expiry, today);
-  return { ...rest, id_number_masked: `••••••${id_number_last4}`, cert_status: s.status, days_remaining: s.days };
+  const guess = r.activity_code ? null : guessActivity(`${r.profession ?? ''} ${r.internal_section ?? ''}`, ctx.activities);
+  const activity = ctx.activities.find((a) => a.code === (r.activity_code ?? guess));
+  const proc = trackProcess({ ...r, cert_status: s.status }, ctx);
+  return {
+    ...rest, id_number_masked: `••••••${id_number_last4}`, cert_status: s.status, days_remaining: s.days,
+    activity_name: activity?.name_ar ?? null, activity_guessed: !r.activity_code && !!activity, edu_required: proc.eduRequired,
+    renewal_open: s.days !== null && s.days <= RENEWAL_WINDOW_DAYS && s.status !== 'NOT_FIT',
+    steps: proc.steps, next_step: proc.next, progress: { done: proc.done, total: proc.total },
+  };
 }
 
 export async function listRegister(f: { search?: string; status?: CertStatus; branch?: string }) {
@@ -234,7 +285,8 @@ export async function listRegister(f: { search?: string; status?: CertStatus; br
     [f.search ? `%${f.search}%` : null, f.search ?? null, f.branch ?? null],
   );
   const today = localDate();
-  return rows.map((r) => present(r, today)).filter((r) => !f.status || r.cert_status === f.status);
+  const ctx = await loadProcessContext();
+  return rows.map((r) => present(r, today, ctx)).filter((r) => !f.status || r.cert_status === f.status);
 }
 
 export async function revealIdNumber(id: string) {
@@ -253,6 +305,12 @@ async function assertBranchLicense(branch: string, license: string, excludeId?: 
   if (other) throw AppError.conflict(`الفرع «${branch}» مسجل برقم رخصة بلدي ${other.balady_license_no} — لا يمكن استخدام رقم آخر لنفس الفرع`);
 }
 
+async function assertActivity(code: string | null) {
+  if (!code) return;
+  const { rowCount } = await query('SELECT 1 FROM hc_activities WHERE code = $1 AND is_active', [code]);
+  if (!rowCount) throw new AppError(422, 'INVALID_ENTRY', `النشاط «${code}» غير موجود في دليل الأنشطة المستهدفة`);
+}
+
 const duplicateId = (err: unknown): never => {
   if ((err as { code?: string }).code === '23505') throw AppError.conflict('رقم الهوية / الإقامة مسجّل مسبقاً في السجل');
   throw err;
@@ -262,15 +320,18 @@ export async function createEntry(ctx: DbContext, input: RegisterInput) {
   const { value: v, errors, warnings } = normalizeEntry(input, { requireId: true });
   if (errors.length) throw new AppError(422, 'INVALID_ENTRY', errors.join(' · '));
   await assertBranchLicense(v.branch_name, v.balady_license_no);
+  await assertActivity(v.activity_code);
   const id = await withTransaction(ctx, async (db) => {
     const { rows } = await db.query<{ id: string }>(
       `INSERT INTO health_register (serial, branch_name, balady_license_no, internal_section, worker_name, id_number_enc, id_number_hash,
-                                    id_number_last4, id_type, birth_date, profession, mobile, exam_date, exam_status, cert_expiry, notes)
-       VALUES (COALESCE($1, (SELECT COALESCE(max(serial), 0) + 1 FROM health_register)), $2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+                                    id_number_last4, id_type, birth_date, profession, mobile, exam_date, exam_status, cert_expiry, notes,
+                                    city, activity_code, request_no, edu_status, fee_paid_on)
+       VALUES (COALESCE($1, (SELECT COALESCE(max(serial), 0) + 1 FROM health_register)), $2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
+               $17,$18,$19,$20,$21)
        RETURNING id`,
       [v.serial, v.branch_name, v.balady_license_no, v.internal_section, v.worker_name, encrypt(v.id_number!), blindIndex(v.id_number!),
         v.id_number!.slice(-4), v.id_number!.startsWith('1') ? 'CITIZEN' : 'RESIDENT', v.birth_date, v.profession, v.mobile,
-        v.exam_date, v.exam_status, v.cert_expiry, v.notes],
+        v.exam_date, v.exam_status, v.cert_expiry, v.notes, v.city, v.activity_code, v.request_no, v.edu_status, v.fee_paid_on],
     );
     return rows[0]!.id;
   }).catch(duplicateId);
@@ -280,7 +341,7 @@ export async function createEntry(ctx: DbContext, input: RegisterInput) {
 export async function getEntry(id: string) {
   const { rows } = await query<DbRow>(`SELECT ${COLS} FROM health_register WHERE id = $1`, [id]);
   if (!rows[0]) throw AppError.notFound('Register entry');
-  return present(rows[0], localDate());
+  return present(rows[0], localDate(), await loadProcessContext());
 }
 
 /** Full replacement of the row's values (the form sends every column); the ID number is changed only when sent. */
@@ -289,16 +350,19 @@ export async function updateEntry(ctx: DbContext, id: string, input: RegisterInp
   const { value: v, errors, warnings } = normalizeEntry(input, { requireId: false });
   if (errors.length) throw new AppError(422, 'INVALID_ENTRY', errors.join(' · '));
   await assertBranchLicense(v.branch_name, v.balady_license_no, id);
+  await assertActivity(v.activity_code);
   await withTransaction(ctx, (db) => db.query(
     `UPDATE health_register SET serial = COALESCE($2, serial), branch_name = $3, balady_license_no = $4, internal_section = $5,
             worker_name = $6, birth_date = $7, profession = $8, mobile = $9, exam_date = $10, exam_status = $11, cert_expiry = $12, notes = $13,
             id_number_enc = COALESCE($14, id_number_enc), id_number_hash = COALESCE($15, id_number_hash),
-            id_number_last4 = COALESCE($16, id_number_last4), id_type = COALESCE($17, id_type)
+            id_number_last4 = COALESCE($16, id_number_last4), id_type = COALESCE($17, id_type),
+            city = $18, activity_code = $19, request_no = $20, edu_status = $21, fee_paid_on = $22
       WHERE id = $1`,
     [id, v.serial, v.branch_name, v.balady_license_no, v.internal_section, v.worker_name, v.birth_date, v.profession, v.mobile,
       v.exam_date, v.exam_status, v.cert_expiry, v.notes,
       v.id_number ? encrypt(v.id_number) : null, v.id_number ? blindIndex(v.id_number) : null, v.id_number ? v.id_number.slice(-4) : null,
-      v.id_number ? (v.id_number.startsWith('1') ? 'CITIZEN' : 'RESIDENT') : null],
+      v.id_number ? (v.id_number.startsWith('1') ? 'CITIZEN' : 'RESIDENT') : null,
+      v.city, v.activity_code, v.request_no, v.edu_status, v.fee_paid_on],
   )).catch(duplicateId);
   return { entry: await getEntry(id), warnings };
 }

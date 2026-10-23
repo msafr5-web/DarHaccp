@@ -81,6 +81,7 @@ function RootNavigator() {
         <Stack.Screen name="platform/[id]" options={{ title: 'مراجعة الشركة' }} />
         <Stack.Screen name="platform/attempts" options={{ title: 'محاولات الدخول' }} />
         <Stack.Screen name="platform/forms/index" options={{ title: 'مكتبة النماذج' }} />
+        <Stack.Screen name="platform/health-guide" options={{ title: 'إدارة دليل الشهادة الصحية' }} />
         <Stack.Screen name="platform/forms/[id]" options={{ title: 'تحرير النموذج' }} />
         <Stack.Screen name="platform/tenant-form" options={{ title: 'نموذج الشركة' }} />
       </Stack.Protected>
@@ -98,6 +99,7 @@ function RootNavigator() {
         <Stack.Screen name="stock/index" options={{ title: 'المخزون والصلاحية (FEFO)' }} />
         <Stack.Screen name="trace/index" options={{ title: 'تتبع التشغيلة (Recall)' }} />
         <Stack.Screen name="health-register/index" options={{ title: 'سجل الشهادات الصحية (بلدي)' }} />
+        <Stack.Screen name="health-guide/index" options={{ title: 'دليل الشهادة الصحية' }} />
         <Stack.Screen name="template-options/[id]" options={{ title: 'القوائم المعتمدة' }} />
         <Stack.Screen name="capa/[id]" options={{ title: 'إجراء تصحيحي (CAPA)' }} />
         <Stack.Screen name="incidents/index" options={{ title: 'الحوادث وعدم المطابقة' }} />

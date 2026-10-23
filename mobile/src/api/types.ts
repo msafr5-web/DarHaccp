@@ -519,3 +519,62 @@ export interface TraceResult {
   stock: { id: string; item_code: string; item_name: string; batch_number: string; expiry_date: string; quantity: number; issued_total: number }[];
   ncrs: { id: string; incident_no: string; title: string; status: string; severity: Severity; record_id: string; occurred_at: string }[];
 }
+
+export type Verification = 'OFFICIAL' | 'REPORTED' | 'UNVERIFIED';
+
+interface GuideBase {
+  id: string;
+  code: string;
+  source_code: string | null;
+  verification: Verification;
+  verified_on: string | null;
+  is_active: boolean;
+  edited: boolean;
+}
+export interface GuideRequirement extends GuideBase {
+  kind: 'REQUIREMENT' | 'CONDITION' | 'FEE' | 'VALIDITY' | 'PENALTY' | 'CHANNEL' | 'SUPPORT' | 'NOTE';
+  title_ar: string;
+  detail_ar: string;
+  value_text: string | null;
+  items: string[];
+}
+export interface GuideActivity extends GuideBase {
+  sector: 'FOOD' | 'PUBLIC_HEALTH';
+  name_ar: string;
+  examples_ar: string | null;
+  keywords: string[];
+  cert_required: boolean;
+  notes_ar: string | null;
+}
+export interface GuideTest extends GuideBase {
+  category: 'CLINICAL' | 'LAB' | 'IMAGING';
+  name_ar: string;
+  purpose_ar: string;
+  applicability: 'COMMON' | 'CASE_BY_CASE';
+}
+export interface GuideStep extends GuideBase {
+  step_no: number;
+  title_ar: string;
+  detail_ar: string;
+  actor: 'APPLICANT' | 'HEALTH_CENTER' | 'TRAINING_CENTER' | 'SYSTEM';
+  system_name: 'BALADY' | 'SEHHA' | 'TRAINING' | 'PAYMENT';
+  tracked_by: string | null;
+  conditional: boolean;
+}
+export interface GuideSource {
+  code: string;
+  title: string;
+  publisher: string;
+  url: string | null;
+  level: 'OFFICIAL' | 'CLINICS';
+  retrieved_on: string;
+}
+export interface HealthGuide {
+  requirements: GuideRequirement[];
+  activities: GuideActivity[];
+  tests: GuideTest[];
+  steps: GuideStep[];
+  sources: GuideSource[];
+  eduCities: string[];
+  lastVerified: string | null;
+}

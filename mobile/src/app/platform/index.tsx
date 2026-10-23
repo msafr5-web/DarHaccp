@@ -58,6 +58,7 @@ export default function PlatformScreen() {
             </Card>
           ) : null}
           <Button title="🧩 مكتبة النماذج (الحقول والخصائص)" onPress={() => router.push('/platform/forms')} />
+          <Button title="📚 دليل الشهادة الصحية (محتوى المتطلبات والأنشطة والخطوات)" variant="outline" onPress={() => router.push('/platform/health-guide')} />
           <Button title="🔐 سجل محاولات الدخول لكل الشركات" variant="outline" onPress={() => router.push('/platform/attempts')} />
           <View style={{ height: 10 }} />
           <Input placeholder="بحث بالاسم أو الرمز أو البريد أو الجوال أو الرقم التعريفي" value={search} onChangeText={setSearch} />

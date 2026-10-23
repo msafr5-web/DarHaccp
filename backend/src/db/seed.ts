@@ -9,6 +9,7 @@ import { provisionTenantDefaults } from '../services/provisioning.service';
 import { generateQrToken } from '../services/qr.service';
 import { blindIndex, encrypt } from '../utils/crypto';
 import { normalizeEntry } from '../services/healthRegister.service';
+import { syncHealthGuide } from '../services/healthGuide.service';
 import * as data from './seedData';
 
 /** The first customer company (pre-SaaS data) and its demo accounts. */
@@ -38,6 +39,8 @@ async function seed() {
       [DEMO_TENANT_ID, env.SEED_ADMIN_EMAIL],
     );
     await db.query(`SELECT setval(pg_get_serial_sequence('tenants', 'id'), GREATEST((SELECT max(id) FROM tenants), 2))`);
+    // Health certificate guide (requirements, activities, medical tests, issuance steps + sources).
+    await syncHealthGuide(db);
     // Platform form library (new forms only — edits made by the platform administrator are kept).
     await syncCatalogSeed(db);
   });
@@ -98,8 +101,8 @@ async function seed() {
           examStatus: w.examStatus, certExpiry: w.expiry, notes: w.notes }, { requireId: true });
         await db.query(
           `INSERT INTO health_register (serial, branch_name, balady_license_no, internal_section, worker_name, id_number_enc, id_number_hash,
-                                        id_number_last4, id_type, birth_date, profession, mobile, exam_date, exam_status, cert_expiry, notes)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+                                        id_number_last4, id_type, birth_date, profession, mobile, exam_date, exam_status, cert_expiry, notes, city)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'الرياض')`,
           [v.serial, v.branch_name, v.balady_license_no, v.internal_section, v.worker_name, encrypt(w.id), blindIndex(w.id), w.id.slice(-4),
             w.id.startsWith('1') ? 'CITIZEN' : 'RESIDENT', v.birth_date, v.profession, v.mobile, v.exam_date, v.exam_status, v.cert_expiry, v.notes],
         );

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import * as forms from '../controllers/catalog.controller';
+import * as guide from '../controllers/healthGuide.controller';
 import * as tenants from '../controllers/tenant.controller';
 import { authorize, authorizePlatform } from '../middlewares/auth';
 import { authRateLimiter } from '../middlewares/security';
@@ -26,6 +27,9 @@ platformRoutes.post('/tenants/:id/suspend', validate({ params: tenants.tenantIdP
 platformRoutes.post('/tenants/:id/reactivate', validate({ params: tenants.tenantIdParams }), tenants.reactivate);
 platformRoutes.post('/tenants/:id/reopen', validate({ params: tenants.tenantIdParams, body: tenants.reviewSchema }), tenants.reopen);
 platformRoutes.post('/tenants/:id/resend-activation', validate({ params: tenants.tenantIdParams }), tenants.resendActivationLink);
+// Health certificate guide (reference content shared by every company).
+platformRoutes.get('/health-guide', guide.getGuideAdmin);
+platformRoutes.patch('/health-guide/:kind/:id', validate({ params: guide.guideItemParams }), guide.updateItem);
 platformRoutes.get('/login-attempts', validate({ query: tenants.attemptsQuery }), tenants.platformAttempts);
 
 // Form library (add / remove fields) and the forms enabled for each company.

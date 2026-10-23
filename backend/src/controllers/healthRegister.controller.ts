@@ -30,6 +30,11 @@ const entrySchema = z.object({
   examStatus: z.enum(['FIT', 'PENDING', 'UNFIT']),
   certExpiry: z.string().max(10).nullable().optional(),
   notes: z.string().max(2000).nullable().optional(),
+  city: z.string().max(60).nullable().optional(),
+  activityCode: z.string().max(30).nullable().optional(),
+  requestNo: z.string().max(30).nullable().optional(),
+  eduStatus: z.enum(['PENDING', 'PASSED', 'FAILED']).optional(),
+  feePaidOn: z.string().max(10).nullable().optional(),
 });
 
 const exportQuery = z.object({ template: z.enum(['true', 'false']).optional() });
