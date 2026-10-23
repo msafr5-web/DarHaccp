@@ -77,6 +77,51 @@ export async function api<T>(path: string, options: { method?: string; body?: un
   return json.data as T;
 }
 
+async function failure(res: Response): Promise<never> {
+  const json = await res.json().catch(() => null);
+  if (res.status === 401 && authToken) onUnauthorized?.();
+  const err = json?.error ?? {};
+  throw new ApiError(res.status, err.code ?? 'UNKNOWN', err.message ?? `Request failed (${res.status})`, err.details);
+}
+
+/** Downloads a file produced by the API (web: saved by the browser under `filename`). */
+export async function apiDownload(path: string, filename: string): Promise<void> {
+  if (Platform.OS !== 'web') throw new ApiError(0, 'WEB_ONLY', 'تنزيل الملفات متاح من المتصفح أو التطبيق المثبّت من المتصفح');
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, { headers: authToken ? { Authorization: `Bearer ${authToken}` } : {} });
+  } catch {
+    throw new ApiError(0, 'NETWORK_ERROR', 'تعذر الاتصال بالخادم. تحقق من الشبكة.');
+  }
+  if (!res.ok) await failure(res);
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30_000);
+}
+
+/** Sends a file as the raw request body (e.g. an Excel workbook) and returns the JSON `data`. */
+export async function apiUpload<T>(path: string, file: Blob | ArrayBuffer, contentType: string): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': contentType, ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
+      body: file,
+    });
+  } catch {
+    throw new ApiError(0, 'NETWORK_ERROR', 'تعذر الاتصال بالخادم. تحقق من الشبكة.');
+  }
+  if (!res.ok) await failure(res);
+  const json = await res.json().catch(() => null);
+  if (!json?.success) await failure(res);
+  return json.data as T;
+}
+
 /** Human-readable message (Arabic first) for an error thrown by `api()`. */
 export function errorMessage(e: unknown): string {
   if (e instanceof ApiError) {

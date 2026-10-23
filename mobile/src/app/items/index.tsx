@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
 import { api, errorMessage } from '@/api/client';
 import type { Item, StorageCondition } from '@/api/types';
+import { ItemsExcel } from '@/components/ItemsExcel';
 import { Badge, Button, Card, Chips, Empty, Input, styles } from '@/components/ui';
 import { STORAGE_CONDITION } from '@/constants';
 import { useAuth } from '@/context/AuthContext';
@@ -84,6 +85,7 @@ export default function ItemsScreen() {
               جدول الأصناف الرئيسي (Item Master): لا يقبل أي نموذج كود صنف غير مسجّل هنا، ويُملأ اسم الصنف تلقائياً.
             </Text>
           </Card>
+          <ItemsExcel canImport={manage} onImported={() => void reload()} />
           {manage ? (editing === 'new'
             ? <ItemForm item={null} onCancel={() => setEditing(null)} onSaved={() => { setEditing(null); void reload(); }} />
             : <Button title="➕ صنف جديد" onPress={() => setEditing('new')} />) : null}

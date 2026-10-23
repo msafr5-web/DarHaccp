@@ -103,3 +103,20 @@ When adding a device, you set:
 | `POST /qr/equipment/:id/rotate` | Issue a new QR code |
 | `POST /equipment/:id/device-key` | Issue a smart-probe key |
 | `GET /kitchens/:dept/records?equipmentId=` | Readings of one device |
+
+## Item master ⇄ Excel (جدول الأصناف — Excel)
+
+Screen: **📚 جدول الأصناف الرئيسي** → **📊 Excel**.
+
+- **Export:** `GET /items/export.xlsx` returns a right-to-left workbook with:
+  - dropdowns for the storage condition and the status;
+  - read-only columns for the current stock and the number of batches;
+  - an instructions sheet.
+- **Template:** `GET /items/export.xlsx?template=true` returns a blank workbook with one example row.
+- **Import / update:** `POST /items/import` takes the raw `.xlsx` file as the request body (max 4 MB, up to 5,000 items).
+  - The import first returns a preview: new items, updated items with the changed fields, unchanged items, and an error for each row.
+  - `?apply=true` applies everything in one transaction. If any row has an error, nothing is applied.
+  - The item code is the key: a new code creates an item, an existing code updates it. Empty cells keep the current values.
+  - Items are never deleted. Use the status column (`نشط` / `موقوف`) instead.
+  - Every change is recorded in the audit trail.
+- **Permissions:** importing needs `item:manage` (company admin, HACCP officer, kitchen supervisor). Exporting is open to every company user.

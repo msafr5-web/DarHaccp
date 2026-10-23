@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { query, withTransaction } from '../config/database';
 import { env } from '../config/env';
 import { findRecordsByBatch } from '../models/record.model';
+import { exportItems, importItems } from '../services/itemsExcel.service';
 import { AppError } from '../utils/AppError';
 import { created, dbContext, ok, requireUser } from '../utils/http';
 import { resolveDepartmentScope } from '../utils/scope';
@@ -86,6 +87,31 @@ export async function updateItem(req: Request, res: Response) {
   if (!r.rowCount) throw AppError.notFound('Item');
   const { rows } = await query(`SELECT ${ITEM_COLUMNS} FROM items i WHERE i.id = $1`, [id]);
   return ok(res, rows[0]);
+}
+
+// ---------------------------------------------------------------- Excel export / import
+
+export const exportQuery = z.object({ template: z.enum(['true', 'false']).optional() });
+export const importQuery = z.object({ apply: z.enum(['true', 'false']).default('false') });
+
+const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+export async function exportItemsXlsx(req: Request, res: Response) {
+  const { template } = req.valid.query as z.infer<typeof exportQuery>;
+  const user = requireUser(req);
+  const file = await exportItems(user.tenantName, template === 'true');
+  const name = template === 'true' ? 'items-template.xlsx' : `items-${new Date().toISOString().slice(0, 10)}.xlsx`;
+  res.setHeader('Content-Type', XLSX_TYPE);
+  res.setHeader('Content-Disposition', `attachment; filename="${name}"`);
+  res.setHeader('Cache-Control', 'no-store');
+  return res.send(file);
+}
+
+/** Body: the raw .xlsx file. `apply=false` → preview (changes + row errors); `apply=true` → all-or-nothing. */
+export async function importItemsXlsx(req: Request, res: Response) {
+  const { apply } = req.valid.query as z.infer<typeof importQuery>;
+  if (!Buffer.isBuffer(req.body) || !req.body.length) throw AppError.badRequest('أرسل ملف Excel (.xlsx)');
+  return ok(res, await importItems(dbContext(req), req.body, apply === 'true'));
 }
 
 // ---------------------------------------------------------------- FEFO stock
