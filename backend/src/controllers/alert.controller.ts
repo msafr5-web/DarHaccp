@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express';
+import { maybeCheckMonitoringGaps } from '../services/monitoring.service';
 import { z } from 'zod';
 import { Alert, listAlerts } from '../models/alert.model';
 import { canAccessDepartment } from '../middlewares/auth';
@@ -13,6 +14,7 @@ export const listAlertsQuery = pagination.extend({
 });
 
 export async function list(req: Request, res: Response) {
+  await maybeCheckMonitoringGaps(requireUser(req).tenantId); // periodic-monitoring gaps (throttled)
   const q = req.valid.query as z.infer<typeof listAlertsQuery>;
   const departmentId = await resolveDepartmentScope(requireUser(req), q.department);
   const { rows, total } = await listAlerts({ status: q.status, departmentId, ...paginate(q.page, q.pageSize) });

@@ -111,6 +111,23 @@ async function assertUnique(template: FormTemplate, data: Record<string, unknown
   }
 }
 
+/**
+ * Item master as a foreign key: `itemRef` codes must exist (active) in the company's items list;
+ * the stored code takes the master's spelling and `item.name` fields get the master's name.
+ */
+async function resolveItems(fields: FormField[], data: Record<string, unknown>) {
+  const ref = fields.find((f) => f.itemRef && typeof data[f.key] === 'string' && data[f.key] !== '');
+  if (!ref) return;
+  const { rows } = await query<{ code: string; name_ar: string }>(
+    'SELECT code, name_ar FROM items WHERE UPPER(code) = UPPER($1) AND is_active', [String(data[ref.key]).trim()],
+  );
+  if (!rows[0]) {
+    throw new AppError(422, 'UNKNOWN_ITEM', `${ref.labelAr} "${data[ref.key]}" غير موجود في جدول الأصناف الرئيسي — أضفه أولاً من شاشة الأصناف`);
+  }
+  data[ref.key] = rows[0].code;
+  for (const f of fields) if (f.prefill === 'item.name') data[f.key] = rows[0].name_ar;
+}
+
 interface Prepared {
   data: Record<string, unknown>;
   result: Evaluation;
@@ -141,6 +158,8 @@ async function prepareRecord(
 
   const data = buildDataSchema(fields, { carried: new Set(Object.keys(carried)) }).parse(raw) as Record<string, unknown>;
   for (const k of Object.keys(data)) if (data[k] === undefined) delete data[k];
+
+  await resolveItems(fields, data);
 
   const refused = [...checkStrictRules(fields, data), ...computeFields(fields, data, localDate(opts.recordedAt))];
   if (refused.length) throw new AppError(422, 'RULE_VIOLATION', refused.join(' · '));
@@ -280,6 +299,7 @@ async function persistRecord(
   recordedAt: Date,
 ) {
   let newAlert: Alert | undefined;
+  let ncrAlert: Alert | undefined;
   let recordId: string;
   try {
     recordId = await withTransaction(ctx, async (db) => {
@@ -301,6 +321,16 @@ async function persistRecord(
       if (result.status === 'FAIL') {
         newAlert = await raiseDeviation(db, user, id, departmentId, template, ccp, result.deviations, input);
       }
+      await applyStock(db, template.fields, data, id, user, localDate(recordedAt));
+      ncrAlert = await raiseNcr(db, user, id, departmentId, template, data, result);
+      // A reading arrived: the "no reading for 2 h 30" alert of this data logger / form is resolved.
+      if (template.max_gap_minutes > 0) {
+        await db.query(
+          `UPDATE alerts SET status = 'RESOLVED', resolved_at = now()
+            WHERE source_type = 'MONITORING_OVERDUE' AND status <> 'RESOLVED' AND source_id = $1`,
+          [equipmentId ?? template.id],
+        );
+      }
       return id;
     });
   } catch (err) {
@@ -313,7 +343,130 @@ async function persistRecord(
   }
 
   if (newAlert) publishAlert(newAlert);
+  if (ncrAlert) publishAlert(ncrAlert);
   return findRecordById(recordId);
+}
+
+// ---------------------------------------------------------------- FEFO stock engine
+
+const num = (v: unknown) => Number(v);
+
+/**
+ * Stock movement of a record, in the record's transaction (refusal rolls the record back):
+ *  - count: the batch balance becomes the counted quantity (stock take / receipt), expiry updated;
+ *  - issue: only an existing, non-expired batch, within its balance, and only the earliest-expiring
+ *    available batch of the item (FEFO). Every movement is kept in the append-only ledger.
+ */
+async function applyStock(db: PoolClient, fields: FormField[], data: Record<string, unknown>, recordId: string, user: AuthUser, today: string) {
+  const f = fields.find((x) => x.stock);
+  if (!f?.stock) return;
+  const item = String(data[f.stock.item] ?? '').trim();
+  const batch = String(data[f.stock.batch] ?? '').trim();
+  const qty = data[f.key];
+  if (!item || !batch || typeof qty !== 'number') return;
+
+  const { rows } = await db.query<{ id: string; quantity: string; expiry_date: string; batch_number: string }>(
+    `SELECT id, quantity, to_char(expiry_date, 'YYYY-MM-DD') AS expiry_date, batch_number FROM stock_batches
+      WHERE UPPER(item_code) = UPPER($1) AND UPPER(batch_number) = UPPER($2) FOR UPDATE`,
+    [item, batch],
+  );
+  const row = rows[0];
+
+  if (f.stock.mode === 'count') {
+    const expiry = String(data[f.stock.expiry ?? ''] ?? '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(expiry)) return;
+    let batchId = row?.id;
+    if (row) {
+      await db.query('UPDATE stock_batches SET quantity = $2, expiry_date = $3, last_record_id = $4 WHERE id = $1', [row.id, qty, expiry, recordId]);
+    } else {
+      const ins = await db.query<{ id: string }>(
+        `INSERT INTO stock_batches (item_code, batch_number, expiry_date, quantity, last_record_id) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+        [item, batch, expiry, qty, recordId],
+      );
+      batchId = ins.rows[0]!.id;
+    }
+    await db.query(
+      `INSERT INTO stock_movements (stock_batch_id, record_id, movement, quantity_before, quantity_after, created_by)
+       VALUES ($1, $2, 'COUNT', $3, $4, $5)`,
+      [batchId, recordId, row ? num(row.quantity) : 0, qty, user.id],
+    );
+    return;
+  }
+
+  if (!row) throw new AppError(422, 'FEFO_UNKNOWN_BATCH', `التشغيلة ${batch} غير موجودة في مخزون الصنف ${item} — سجّل الجرد أو الاستلام أولاً`);
+  if (row.expiry_date < today) {
+    throw new AppError(422, 'FEFO_EXPIRED', `التشغيلة ${row.batch_number} منتهية الصلاحية (${row.expiry_date}) — يُمنع صرفها وتوجَّه للهالك`);
+  }
+  const available = num(row.quantity);
+  if (qty > available) throw new AppError(422, 'FEFO_INSUFFICIENT', `الكمية المطلوبة (${qty}) أكبر من رصيد التشغيلة ${row.batch_number} (${available})`);
+  const earlier = await db.query<{ batch_number: string; expiry_date: string; quantity: string }>(
+    `SELECT batch_number, to_char(expiry_date, 'YYYY-MM-DD') AS expiry_date, quantity FROM stock_batches
+      WHERE UPPER(item_code) = UPPER($1) AND quantity > 0 AND expiry_date >= $2::date AND expiry_date < $3::date AND id <> $4
+      ORDER BY expiry_date, created_at LIMIT 1`,
+    [item, today, row.expiry_date, row.id],
+  );
+  if (earlier.rows[0]) {
+    const e = earlier.rows[0];
+    throw new AppError(409, 'FEFO_ORDER', `سياسة FEFO: يجب صرف التشغيلة ${e.batch_number} أولاً (تنتهي ${e.expiry_date}، الرصيد ${num(e.quantity)})`);
+  }
+  await db.query('UPDATE stock_batches SET quantity = quantity - $2, last_record_id = $3 WHERE id = $1', [row.id, qty, recordId]);
+  await db.query(
+    `INSERT INTO stock_movements (stock_batch_id, record_id, movement, quantity_before, quantity_after, created_by)
+     VALUES ($1, $2, 'ISSUE', $3, $4, $5)`,
+    [row.id, recordId, available, Math.round((available - qty) * 1000) / 1000, user.id],
+  );
+}
+
+// ---------------------------------------------------------------- NCR (non-conformity report)
+
+const NCR_DUE_DAYS = { HIGH: 3, MEDIUM: 7 } as const;
+
+/**
+ * PRD: a rejected shipment (or a missing CoA) opens a non-conformity report. The NCR is linked to the
+ * record and to its CAPA — the deviation CAPA when there is one, otherwise a new CAPA for the NCR.
+ */
+async function raiseNcr(
+  db: PoolClient, user: AuthUser, recordId: string, departmentId: number, template: FormTemplate,
+  data: Record<string, unknown>, result: Evaluation,
+): Promise<Alert | undefined> {
+  const triggers = template.fields.filter((f) => f.ncrWhen !== undefined && data[f.key] === f.ncrWhen);
+  if (!triggers.length) return undefined;
+  const critical = result.deviations.some((d) => d.critical);
+  const severity = critical ? 'HIGH' : 'MEDIUM';
+  const label = (f: FormField) => {
+    const v = data[f.key];
+    return typeof v === 'boolean' ? (v ? 'نعم' : 'لا') : f.optionLabels?.[String(v)] ?? String(v);
+  };
+  const reference = template.fields.filter((f) => f.unique || f.key === 'batch_number' || f.key === 'item_code' || f.key === 'supplier_name')
+    .filter((f) => data[f.key] !== undefined).map((f) => `${f.labelAr}: ${data[f.key]}`).join(' · ');
+  const description = [
+    `${triggers.map((f) => `${f.labelAr} = ${label(f)}`).join('، ')}${reference ? ` — ${reference}` : ''}`,
+    ...result.deviations.map((d) => `• ${d.label}: ${String(d.value)} (الحد ${d.limit})`),
+    `السجل ${recordId.slice(0, 8).toUpperCase()}`,
+  ].join('\n');
+
+  const { rows } = await db.query<{ id: string; incident_no: string }>(
+    `INSERT INTO incidents (type, severity, department_id, branch_id, title, description, reported_by, assigned_to, record_id)
+     VALUES ('NON_CONFORMITY', $1, $2, COALESCE($3::smallint, (SELECT id FROM branches ORDER BY id LIMIT 1)), $4, $5, $6,
+             (SELECT id FROM users WHERE is_active AND role = 'KITCHEN_SUPERVISOR' AND department_id = $2 ORDER BY created_at LIMIT 1), $7)
+     RETURNING id, incident_no`,
+    [severity, departmentId, user.branchId, `تقرير عدم مطابقة (NCR) — ${template.title_ar}`, description, user.id, recordId],
+  );
+  const ncr = rows[0]!;
+  const linked = await db.query('UPDATE capas SET incident_id = $1 WHERE record_id = $2 AND incident_id IS NULL', [ncr.id, recordId]);
+  if (!linked.rowCount) {
+    await db.query(
+      `INSERT INTO capas (incident_id, record_id, department_id, description, assigned_to, due_date, created_by)
+       VALUES ($1, $2, $3, $4, (SELECT assigned_to FROM incidents WHERE id = $1), (now() AT TIME ZONE $5)::date + $6::int, $7)`,
+      [ncr.id, recordId, departmentId, `${ncr.incident_no} — ${template.title_ar}: ${description}`, env.APP_TIMEZONE, NCR_DUE_DAYS[severity], user.id],
+    );
+  }
+  // Critical cases already raised the deviation alert; a plain rejection is announced as an NCR.
+  if (result.status === 'FAIL') return undefined;
+  return insertAlert(db, {
+    sourceType: 'INCIDENT', sourceId: ncr.id, departmentId, severity,
+    title: `تقرير عدم مطابقة ${ncr.incident_no}`, message: `${template.title_ar}: ${triggers.map((f) => `${f.labelAr} = ${label(f)}`).join('، ')}`,
+  });
 }
 
 // ---------------------------------------------------------------- amendment (FILL_EDIT employees)
@@ -371,6 +524,9 @@ export async function amendRecord(ctx: DbContext, user: AuthUser, department: { 
 
   const template = await findTemplate({ id: record.template_id });
   if (!template) throw AppError.notFound('Form template');
+  if (template.fields.some((f) => f.stock)) {
+    throw new AppError(409, 'STOCK_RECORD', 'سجلات حركة المخزون لا تُعدَّل حفاظاً على دفتر FEFO — سجّل جرداً أو حركة تصحيحية جديدة');
+  }
   if (template.version !== record.template_version) {
     throw AppError.conflict(`تغيّرت حقول النموذج منذ تعبئة هذا السجل (الإصدار ${record.template_version} → ${template.version}) — لا يمكن تعديله، سجّل قراءة جديدة`);
   }
@@ -382,8 +538,10 @@ export async function amendRecord(ctx: DbContext, user: AuthUser, department: { 
   const { data, result } = await prepareRecord(template, ccp, { equipment, branchName: await branchName(user.branchId) }, input.data, {
     recordedAt: new Date(record.recorded_at), excludeRecordId: id, carried,
   });
+  const ncrBefore = template.fields.some((f) => f.ncrWhen !== undefined && record.data[f.key] === f.ncrWhen);
 
   let newAlert: Alert | undefined;
+  let ncrAlert: Alert | undefined;
   await withTransaction(ctx, async (db) => {
     await db.query(`SELECT set_config('app.record_amend', 'on', true)`);
     await db.query(
@@ -403,6 +561,8 @@ export async function amendRecord(ctx: DbContext, user: AuthUser, department: { 
         input.notes !== undefined, input.notes ?? null, input.correctiveActionTaken !== undefined, input.correctiveActionTaken ?? null,
         user.id, input.reason],
     );
+    // A correction that turns into a rejection opens its NCR (once).
+    if (!ncrBefore) ncrAlert = await raiseNcr(db, user, id, record.department_id, template, data, result);
     if (result.status === 'FAIL') {
       const { rowCount } = await db.query(`SELECT 1 FROM alerts WHERE source_type = 'CCP_DEVIATION' AND source_id = $1`, [id]);
       if (!rowCount) {
@@ -414,6 +574,7 @@ export async function amendRecord(ctx: DbContext, user: AuthUser, department: { 
   });
 
   if (newAlert) publishAlert(newAlert);
+  if (ncrAlert) publishAlert(ncrAlert);
   return findRecordById(id);
 }
 

@@ -45,6 +45,8 @@ export const PERMISSIONS = {
   'recipe:manage': ['ADMIN', 'HACCP_OFFICER', 'KITCHEN_SUPERVISOR'],
   'label:create': ['ADMIN', 'HACCP_OFFICER', 'KITCHEN_SUPERVISOR', 'CHEF'],
   'label:read': ['ADMIN', 'HACCP_OFFICER', 'HSE_OFFICER', 'KITCHEN_SUPERVISOR', 'CHEF'],
+  // Item master & FEFO stock (warehouse supervisors maintain the items)
+  'item:manage': ['ADMIN', 'HACCP_OFFICER', 'KITCHEN_SUPERVISOR'],
   // IoT probes
   'iot:manage': ['ADMIN'],
 } as const satisfies Record<string, readonly Role[]>;

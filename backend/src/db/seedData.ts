@@ -249,6 +249,16 @@ export const templates: TemplateSeed[] = [
 /** Demo approved-supplier list of the inbound receiving form (each company maintains its own). */
 export const demoSuppliers = ['شركة المراعي', 'شركة تنمية الغذائية', 'مؤسسة الوطنية للدواجن', 'شركة الأغذية المبردة المتحدة'];
 
+/** Demo item master (forms reference item codes like a foreign key). */
+export const demoItems = [
+  { code: 'ITM-1001', nameAr: 'أرز بسمتي', category: 'حبوب', storage: 'AMBIENT', unit: 'كغ' },
+  { code: 'ITM-1002', nameAr: 'زيت دوار الشمس', category: 'زيوت', storage: 'AMBIENT', unit: 'لتر' },
+  { code: 'ITM-2001', nameAr: 'صدور دجاج مبردة', category: 'دواجن', storage: 'CHILLED', unit: 'كغ' },
+  { code: 'ITM-2002', nameAr: 'حليب طازج كامل الدسم', category: 'ألبان', storage: 'CHILLED', unit: 'لتر' },
+  { code: 'ITM-3001', nameAr: 'لحم بقري مفروم مجمد', category: 'لحوم', storage: 'FROZEN', unit: 'كغ' },
+  { code: 'ITM-4001', nameAr: 'مكملات غذائية حساسة للحرارة', category: 'مواد حساسة', storage: 'SENSITIVE', unit: 'علبة' },
+];
+
 export const recipes = [
   {
     code: 'SW-KUNAFA', nameAr: 'كنافة بالقشطة', nameEn: 'Kunafa with cream', department: 'SWEETS', shelfLifeHours: 24, storageTempMax: 4,

@@ -99,6 +99,7 @@ export async function resolveQr(user: AuthUser, payload: string) {
     /** Automatic values (data-logger code, zone, carried balances): shown read-only, re-applied by the server. */
     prefill: await formPrefill(user, template, equipment),
     minDailyEntries: template.min_daily_entries,
+    maxGapMinutes: template.max_gap_minutes,
     kind: equipment ? ('EQUIPMENT' as const) : ('FORM' as const),
     // Where the app should POST the completed form.
     department: equipment?.department_code ?? template.department_code ?? user.departmentCode,

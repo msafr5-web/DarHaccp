@@ -296,7 +296,11 @@ export const formFieldSchema = z
     carryFrom: fieldKey.optional(),
     carryMatch: z.array(fieldKey).max(5).optional(),
     compute: computeSchema.optional(),
-    prefill: z.enum(['equipment.code', 'equipment.name', 'equipment.location', 'branch.name']).optional(),
+    prefill: z.enum(['equipment.code', 'equipment.name', 'equipment.location', 'branch.name', 'item.name']).optional(),
+    itemRef: z.boolean().optional(),
+    ncrWhen: z.union([z.string().max(100), z.boolean()]).optional(),
+    stock: z.object({ mode: z.enum(['count', 'issue']), item: fieldKey, batch: fieldKey, expiry: fieldKey.optional() }).optional(),
+    stockBatchOf: fieldKey.optional(),
     onCriticalDeviation: z.string().max(100).optional(),
     companyOptions: z.boolean().optional(),
     expected: z.boolean().optional(),
@@ -315,6 +319,9 @@ export const formFieldSchema = z
   .refine((f) => !f.limitsBy || f.type === 'number', { message: 'limitsBy applies to number fields' })
   .refine((f) => !f.after || f.type === 'date', { message: 'after applies to date fields' })
   .refine((f) => !f.pattern || f.type === 'text', { message: 'pattern applies to text fields' })
+  .refine((f) => !f.itemRef || f.type === 'text', { message: 'itemRef applies to text fields' })
+  .refine((f) => !f.stock || f.type === 'number', { message: 'stock applies to number fields' })
+  .refine((f) => !f.stock || f.stock.mode === 'issue' || !!f.stock.expiry, { message: 'stock count needs the expiry field' })
   .refine((f) => !f.onCriticalDeviation || (f.type === 'select' && (f.options ?? []).includes(f.onCriticalDeviation)), {
     message: 'onCriticalDeviation must be one of the select options',
   })
@@ -343,8 +350,12 @@ export const formFieldsSchema = z
       const c = f.compute;
       const refs = [
         ...(f.uniqueWith ?? []), ...(f.carryMatch ?? []),
+        ...(f.stock ? [f.stock.item, f.stock.batch, ...(f.stock.expiry ? [f.stock.expiry] : [])] : []),
+        ...(f.stockBatchOf ? [f.stockBatchOf] : []),
         ...(!c ? [] : c.kind === 'sum' ? c.terms.map((t) => t.field) : c.kind === 'compliance' ? c.fields : [c.field]),
       ];
       return refs.every((r) => keys.has(r) && r !== f.key);
     });
-  }, { message: 'compute / uniqueWith / carryMatch must reference other fields of the same form' });
+  }, { message: 'compute / uniqueWith / carryMatch / stock must reference other fields of the same form' })
+  .refine((fs) => fs.filter((f) => f.stock).length <= 1, { message: 'only one stock field per form' })
+  .refine((fs) => !fs.some((f) => f.prefill === 'item.name') || fs.some((f) => f.itemRef), { message: 'item.name prefill needs an itemRef field' });

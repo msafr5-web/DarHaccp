@@ -96,3 +96,16 @@ export const MAINTENANCE_TYPE: Record<string, string> = {
   CORRECTIVE: 'صيانة تصحيحية',
   CALIBRATION: 'معايرة',
 };
+
+export const STORAGE_CONDITION: Record<string, { label: string; icon: string; color: string }> = {
+  CHILLED: { label: 'مبرد 2–8°م', icon: '🧊', color: '#1570EF' },
+  FROZEN: { label: 'مجمد ≤ -18°م', icon: '❄️', color: '#6172F3' },
+  AMBIENT: { label: 'جاف / حرارة الغرفة', icon: '📦', color: '#667085' },
+  SENSITIVE: { label: 'حساس (أدوية 2–8°م)', icon: '💊', color: '#B42318' },
+};
+
+export const EXPIRY_STATUS: Record<string, { label: string; color: string }> = {
+  Safe: { label: 'آمن', color: '#067647' },
+  'Expiring Soon': { label: 'قارب على الانتهاء', color: '#B54708' },
+  Expired: { label: 'منتهي — يُمنع صرفه', color: '#B42318' },
+};

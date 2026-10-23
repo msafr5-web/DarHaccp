@@ -124,6 +124,10 @@ function ruleBadges(d: FieldDraft): string[] {
     if (a.prefill) out.push('تلقائي من QR');
     if (a.companyOptions) out.push('قائمة الشركة');
     if (a.ccpMeasurement) out.push('قراءة CCP');
+    if (a.itemRef) out.push('جدول الأصناف');
+    if (a.ncrWhen !== undefined) out.push('يفتح NCR');
+    if (a.stock) out.push(a.stock.mode === 'issue' ? 'صرف FEFO' : 'جرد المخزون');
+    if (a.stockBatchOf) out.push('تشغيلات FEFO');
   } catch { out.push('⚠ JSON'); }
   return out;
 }
@@ -196,7 +200,7 @@ export function FieldsEditor({ drafts, onChange }: { drafts: FieldDraft[]; onCha
                 <Input label="قواعد متقدمة (JSON)" value={d.advanced} onChangeText={(v) => update(d.uid, { advanced: v })} multiline autoCapitalize="none"
                   style={{ minHeight: 90, fontFamily: 'monospace', fontSize: 12, textAlignVertical: 'top', textAlign: 'left', writingDirection: 'ltr' }}
                   placeholder='{"limitsBy":{"field":"zone_type","cases":{"تبريد":{"min":2,"max":8}}}}'
-                  hint="limitsBy · compute · after · unique · uniqueWith · carryFrom · carryMatch · prefill · onCriticalDeviation · companyOptions · optionLabels · pattern" />
+                  hint="limitsBy · compute · after · unique · uniqueWith · carryFrom · carryMatch · prefill · onCriticalDeviation · companyOptions · optionLabels · pattern · itemRef · ncrWhen · stock · stockBatchOf" />
               </View>
             ) : null}
           </Card>

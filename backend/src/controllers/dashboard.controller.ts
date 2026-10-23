@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express';
+import { maybeCheckMonitoringGaps } from '../services/monitoring.service';
 import { z } from 'zod';
 import {
   getComplianceTrend,
@@ -19,6 +20,7 @@ export const deviationsQuery = scopeQuery.extend({ from: isoDateTime.optional(),
 const scope = (req: Request) => resolveDepartmentScope(requireUser(req), (req.valid.query as { department?: never }).department);
 
 export async function overview(req: Request, res: Response) {
+  await maybeCheckMonitoringGaps(req.user!.tenantId); // periodic-monitoring gaps (throttled)
   const { date } = req.valid.query as z.infer<typeof overviewQuery>;
   return ok(res, await getOverview(date, await scope(req)));
 }

@@ -22,6 +22,14 @@ const SECTIONS: { title: string; links: ModuleLink[] }[] = [
     ],
   },
   {
+    title: 'المستودعات وسلاسل التبريد (GDP)',
+    links: [
+      { icon: '📦', title: 'المخزون والصلاحية (FEFO)', description: 'التشغيلات بترتيب الانتهاء — صرف الأقرب انتهاءً أولاً ومنع المنتهي', href: '/stock', permission: 'record:read' },
+      { icon: '📚', title: 'جدول الأصناف الرئيسي', description: 'كل كود صنف في النماذج يُتحقق منه هنا (Item Master)', href: '/items', permission: 'record:read' },
+      { icon: '🔎', title: 'تتبع التشغيلة (Recall)', description: 'كل ما سُجّل عن رقم تشغيلة: الاستلام، الفحص، الصرف، عدم المطابقة', href: '/trace', permission: 'record:read' },
+    ],
+  },
+  {
     title: 'الجودة والتحسين المستمر',
     links: [
       { icon: '🚨', title: 'الإبلاغ عن حادث / عدم مطابقة', description: 'بلاغ فوري يفتح إجراءً تصحيحياً تلقائياً', href: '/incidents/new', permission: 'incident:create' },

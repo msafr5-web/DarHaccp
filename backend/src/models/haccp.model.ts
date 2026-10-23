@@ -39,7 +39,16 @@ export type FieldCompute =
   | { kind: 'compliance'; fields: string[] };
 
 /** Auto-filled from where the QR code was scanned. */
-export type FieldPrefill = 'equipment.code' | 'equipment.name' | 'equipment.location' | 'branch.name';
+export type FieldPrefill = 'equipment.code' | 'equipment.name' | 'equipment.location' | 'branch.name' | 'item.name';
+
+/** FEFO stock engine: `count` sets the batch balance (stock take / receipt), `issue` dispenses from it. */
+export interface FieldStock {
+  mode: 'count' | 'issue';
+  item: string;
+  batch: string;
+  /** count: the expiry date field of the batch */
+  expiry?: string;
+}
 
 /** One input on a digital form. Limits make the field self-validating against HACCP rules. */
 export interface FormField {
@@ -72,6 +81,14 @@ export interface FormField {
   onCriticalDeviation?: string;
   /** Select: the company maintains the option list itself (e.g. approved suppliers). */
   companyOptions?: boolean;
+  /** Text: must be an active code of the company's item master (foreign key); fills `item.name` fields. */
+  itemRef?: boolean;
+  /** Opens a non-conformity report (NCR) with its CAPA when the answer equals this value (e.g. Rejected, false). */
+  ncrWhen?: string | boolean;
+  /** Number: quantity moved in the FEFO stock engine. */
+  stock?: FieldStock;
+  /** Text: batch of the item in this field, offered in FEFO order (earliest expiry first). */
+  stockBatchOf?: string;
   unit?: string;
   required?: boolean;
   options?: string[];
@@ -104,10 +121,12 @@ export interface FormTemplate {
   catalog_id: string | null;
   customized: boolean;
   min_daily_entries: number;
+  /** Periodic monitoring: alert when no reading for this many minutes (0 = off). */
+  max_gap_minutes: number;
 }
 
 const TEMPLATE_COLUMNS = `t.id, t.code, t.title_ar, t.title_en, t.description, t.department_id, d.code AS department_code,
-  t.ccp_id, t.fields, t.qr_token, t.version, t.is_active, t.catalog_id, t.customized, t.min_daily_entries`;
+  t.ccp_id, t.fields, t.qr_token, t.version, t.is_active, t.catalog_id, t.customized, t.min_daily_entries, t.max_gap_minutes`;
 
 export async function listCcps(departmentId?: number) {
   const { rows } = await query<Ccp>(

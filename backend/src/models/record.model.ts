@@ -34,6 +34,9 @@ export interface MonitoringRecord {
   source: 'QR' | 'MANUAL' | 'IOT';
   recorded_at: string;
   capa_id: string | null;
+  /** Non-conformity report opened by this record (e.g. rejected shipment). */
+  ncr_id: string | null;
+  ncr_no: string | null;
   // Fill context shown on the record: company, site, device, employee, revision trail.
   company_name: string;
   branch_name: string | null;
@@ -58,7 +61,9 @@ const SELECT_RECORD = `
          r.equipment_id, e.code AS equipment_code, r.recorded_by, u.full_name AS recorded_by_name,
          r.measured_value, r.unit, r.data, r.status, r.deviations, r.product_name, r.batch_no,
          r.notes, r.corrective_action_taken, r.source, r.recorded_at, r.client_ref,
-         (SELECT cp.id FROM capas cp WHERE cp.record_id = r.id LIMIT 1) AS capa_id,
+         (SELECT cp.id FROM capas cp WHERE cp.record_id = r.id ORDER BY cp.created_at LIMIT 1) AS capa_id,
+         (SELECT i.id FROM incidents i WHERE i.record_id = r.id ORDER BY i.created_at LIMIT 1) AS ncr_id,
+         (SELECT i.incident_no FROM incidents i WHERE i.record_id = r.id ORDER BY i.created_at LIMIT 1) AS ncr_no,
          tn.name AS company_name, b.name_ar AS branch_name, e.name AS equipment_name, e.location AS equipment_location,
          u.employee_no AS recorded_by_employee_no, u.role AS recorded_by_role, r.device_info, r.template_version,
          r.revision, r.amended_at, am.full_name AS amended_by_name, r.amendment_reason
@@ -111,4 +116,17 @@ export async function findRecordById(id: string) {
     [id],
   );
   return rows[0];
+}
+
+/** Reverse traceability (recall): every record of any form that mentions this batch / lot number. */
+export async function findRecordsByBatch(batch: string, departmentId: number | null) {
+  const { rows } = await query<MonitoringRecord>(
+    `${SELECT_RECORD}
+      WHERE (UPPER(r.data ->> 'batch_number') = UPPER($1) OR UPPER(r.batch_no) = UPPER($1))
+        AND ($2::smallint IS NULL OR r.department_id = $2)
+      ORDER BY r.recorded_at
+      LIMIT 500`,
+    [batch, departmentId],
+  );
+  return rows;
 }

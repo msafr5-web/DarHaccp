@@ -23,9 +23,12 @@ export interface CatalogForm {
   ccp_code: string | null;
   fields: FormField[];
   min_daily_entries: number;
+  max_gap_minutes: number;
   version: number;
   is_default: boolean;
   is_active: boolean;
+  builtin_revision: number;
+  builtin_synced_version: number;
   companies_count?: number;
 }
 
@@ -49,19 +52,51 @@ export async function syncCatalogSeed(db: Queryable) {
   for (const s of catalogSeeds()) {
     await db.query(
       `INSERT INTO form_catalog (code, title_ar, title_en, description, category, department_code, ccp_code, fields,
-                                 min_daily_entries, is_default)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT (code) DO NOTHING`,
+                                 min_daily_entries, max_gap_minutes, is_default, builtin_revision)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT (code) DO NOTHING`,
       [s.code, s.titleAr, s.titleEn, s.description ?? null, s.category, s.department, s.ccp, JSON.stringify(s.fields),
-        s.minDailyEntries ?? 0, s.isDefault],
+        s.minDailyEntries ?? 0, s.maxGapMinutes ?? 0, s.isDefault, s.revision ?? 1],
     );
   }
   await db.query(
     `UPDATE form_templates t
-        SET catalog_id = c.id, catalog_version = c.version, min_daily_entries = c.min_daily_entries,
+        SET catalog_id = c.id, catalog_version = c.version, min_daily_entries = c.min_daily_entries, max_gap_minutes = c.max_gap_minutes,
             customized = (t.fields IS DISTINCT FROM c.fields)
        FROM form_catalog c
       WHERE t.catalog_id IS NULL AND t.code = c.code`,
   );
+}
+
+/**
+ * Upgrades built-in library forms whose definition changed in code (higher `revision`), through the
+ * normal library update so every following company copy gets the new version. A form edited by the
+ * platform administrator since the last upgrade is left untouched (the administrator's edits win).
+ * Runs after the seed transaction (it opens its own transactions).
+ */
+export async function upgradeBuiltinForms(ctx: DbContext) {
+  const report: { code: string; upgraded: boolean }[] = [];
+  for (const s of catalogSeeds()) {
+    const rev = s.revision ?? 1;
+    const { rows } = await withTransaction({ ...ctx, bypass: true }, (db) =>
+      db.query<CatalogForm>('SELECT * FROM form_catalog WHERE code = $1', [s.code]));
+    const row = rows[0];
+    if (!row || row.builtin_revision >= rev) continue;
+    const untouched = row.version === row.builtin_synced_version;
+    if (untouched) {
+      const updated = await updateCatalog(ctx, row.id, {
+        titleAr: s.titleAr, titleEn: s.titleEn, description: s.description ?? null, fields: s.fields,
+        minDailyEntries: s.minDailyEntries ?? 0, maxGapMinutes: s.maxGapMinutes ?? 0,
+      });
+      await withTransaction({ ...ctx, bypass: true }, (db) => db.query(
+        'UPDATE form_catalog SET builtin_revision = $2, builtin_synced_version = version WHERE id = $1', [row.id, rev]));
+      report.push({ code: s.code, upgraded: !!updated });
+    } else {
+      await withTransaction({ ...ctx, bypass: true }, (db) => db.query(
+        'UPDATE form_catalog SET builtin_revision = $2 WHERE id = $1', [row.id, rev]));
+      report.push({ code: s.code, upgraded: false });
+    }
+  }
+  return report;
 }
 
 /** Keeps the company's own option lists (e.g. approved suppliers) when library fields change. */
@@ -98,6 +133,7 @@ export interface CatalogInput {
   ccpCode: string | null;
   fields: FormField[];
   minDailyEntries: number;
+  maxGapMinutes: number;
   isDefault: boolean;
 }
 
@@ -105,10 +141,10 @@ export async function createCatalog(ctx: DbContext, b: CatalogInput) {
   return withTransaction({ ...ctx, bypass: true }, async (db) => {
     const { rows } = await db.query<CatalogForm>(
       `INSERT INTO form_catalog (code, title_ar, title_en, description, category, department_code, ccp_code, fields,
-                                 min_daily_entries, is_default)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+                                 min_daily_entries, max_gap_minutes, is_default)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
       [b.code, b.titleAr, b.titleEn, b.description ?? null, b.category, b.department, b.ccpCode, JSON.stringify(b.fields),
-        b.minDailyEntries, b.isDefault],
+        b.minDailyEntries, b.maxGapMinutes, b.isDefault],
     ).catch((err) => {
       if ((err as { code?: string }).code === '23505') throw AppError.conflict(`رمز النموذج ${b.code} مستخدم مسبقاً`);
       throw err;
@@ -139,11 +175,13 @@ export async function updateCatalog(ctx: DbContext, id: string, b: CatalogUpdate
               fields = CASE WHEN $11::boolean THEN $12::jsonb ELSE fields END,
               version = version + CASE WHEN $11::boolean THEN 1 ELSE 0 END,
               min_daily_entries = COALESCE($13, min_daily_entries),
-              is_default = COALESCE($14, is_default), is_active = COALESCE($15, is_active)
+              is_default = COALESCE($14, is_default), is_active = COALESCE($15, is_active),
+              max_gap_minutes = COALESCE($16, max_gap_minutes)
         WHERE id = $1 RETURNING *`,
       [id, b.titleAr ?? null, b.titleEn ?? null, b.description !== undefined, b.description ?? null, b.category ?? null,
         b.department !== undefined, b.department ?? null, b.ccpCode !== undefined, b.ccpCode ?? null,
-        fieldsChanged, fieldsChanged ? JSON.stringify(b.fields) : null, b.minDailyEntries ?? null, b.isDefault ?? null, b.isActive ?? null],
+        fieldsChanged, fieldsChanged ? JSON.stringify(b.fields) : null, b.minDailyEntries ?? null, b.isDefault ?? null, b.isActive ?? null,
+        b.maxGapMinutes ?? null],
     );
     const updated = rows[0]!;
 
@@ -156,7 +194,7 @@ export async function updateCatalog(ctx: DbContext, id: string, b: CatalogUpdate
       await db.query(`SELECT set_config('app.tenant_id', $1, true)`, [String(copy.tenant_id)]);
       const syncFields = fieldsChanged && !copy.customized;
       await db.query(
-        `UPDATE form_templates SET title_ar = $2, title_en = $3, description = $4, min_daily_entries = $5,
+        `UPDATE form_templates SET title_ar = $2, title_en = $3, description = $4, min_daily_entries = $5, max_gap_minutes = $10,
                 fields = CASE WHEN $6::boolean THEN $7::jsonb ELSE fields END,
                 version = version + CASE WHEN $6::boolean THEN 1 ELSE 0 END,
                 catalog_version = CASE WHEN $6::boolean THEN $8 ELSE catalog_version END,
@@ -164,7 +202,8 @@ export async function updateCatalog(ctx: DbContext, id: string, b: CatalogUpdate
                 is_active = CASE WHEN $9::boolean THEN FALSE ELSE is_active END
           WHERE id = $1`,
         [copy.id, updated.title_ar, updated.title_en, updated.description, updated.min_daily_entries, syncFields,
-          syncFields ? JSON.stringify(mergeCompanyOptions(updated.fields, copy.fields)) : null, updated.version, !updated.is_active],
+          syncFields ? JSON.stringify(mergeCompanyOptions(updated.fields, copy.fields)) : null, updated.version, !updated.is_active,
+          updated.max_gap_minutes],
       );
       if (syncFields) propagated++;
     }
@@ -210,12 +249,12 @@ export async function listTenantForms(tenantId: number) {
 async function insertCompanyCopy(db: Queryable, c: CatalogForm) {
   await db.query(
     `INSERT INTO form_templates (code, title_ar, title_en, description, department_id, ccp_id, fields, qr_token,
-                                 catalog_id, catalog_version, min_daily_entries)
+                                 catalog_id, catalog_version, min_daily_entries, max_gap_minutes)
      VALUES ($1, $2, $3, $4, (SELECT id FROM departments WHERE code = $5::department_code), (SELECT id FROM ccps WHERE code = $6),
-             $7, $8, $9, $10, $11)
+             $7, $8, $9, $10, $11, $12)
      ON CONFLICT (tenant_id, code) DO UPDATE SET catalog_id = EXCLUDED.catalog_id, is_active = TRUE`,
     [c.code, c.title_ar, c.title_en, c.description, c.department_code, c.ccp_code, JSON.stringify(c.fields), generateQrToken(),
-      c.id, c.version, c.min_daily_entries],
+      c.id, c.version, c.min_daily_entries, c.max_gap_minutes],
   );
 }
 

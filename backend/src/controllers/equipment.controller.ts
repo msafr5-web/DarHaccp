@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express';
+import { maybeCheckMonitoringGaps } from '../services/monitoring.service';
 import { z } from 'zod';
 import { withTransaction } from '../config/database';
 import { findDepartmentByCode } from '../models/department.model';
@@ -74,6 +75,7 @@ function duplicateCode(err: unknown, code: string): never {
 }
 
 export async function list(req: Request, res: Response) {
+  await maybeCheckMonitoringGaps(requireUser(req).tenantId); // periodic-monitoring gaps (throttled)
   const q = req.valid.query as z.infer<typeof listEquipmentQuery>;
   const departmentId = await resolveDepartmentScope(requireUser(req), q.department);
   return ok(res, await listEquipment({ departmentId, status: q.status as EquipmentStatus | undefined, type: q.type, search: q.search }));

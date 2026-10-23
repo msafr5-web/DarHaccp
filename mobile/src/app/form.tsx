@@ -2,10 +2,11 @@ import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
 import { api, ApiError, errorMessage } from '@/api/client';
-import type { Department, FillContext, MonitoringRecord, ResolvedForm, ResolvedLabel } from '@/api/types';
+import type { Department, FillContext, Item, MonitoringRecord, ResolvedForm, ResolvedLabel } from '@/api/types';
 import { Chip, FieldInput } from '@/components/FormFields';
 import { Badge, Button, Card, Empty, Input, Loading, styles } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
+import { useApi } from '@/hooks/useApi';
 import { deviceId } from '@/device';
 import { computeValues, deviates, isCriticalDeviation, thisMonth, toPayload, Values } from '@/formLogic';
 import { cacheForm, cachedForm, enqueue, newClientRef } from '@/offline';
@@ -46,7 +47,8 @@ function FillHeader({ ctx, device, siteFallback }: { ctx?: FillContext; device: 
 }
 
 export default function FormScreen() {
-  const { payload, source } = useLocalSearchParams<{ payload: string; source?: string }>();
+  // `values`: optional JSON of answers to start with (e.g. item & batch when issuing from the FEFO screen).
+  const { payload, source, values: preset } = useLocalSearchParams<{ payload: string; source?: string; values?: string }>();
   const { user, can } = useAuth();
   const [form, setForm] = useState<ResolvedForm | null>(null);
   const [fromCache, setFromCache] = useState(false);
@@ -100,6 +102,9 @@ export default function FormScreen() {
           (fld.carryFrom ? carriedKeys : autoKeys).add(fld.key);
         }
       }
+      try {
+        if (preset) Object.assign(initial, JSON.parse(preset) as Values);
+      } catch { /* ignore malformed preset */ }
       setValues(initial);
       setAuto(autoKeys);
       setCarried(carriedKeys);
@@ -107,7 +112,18 @@ export default function FormScreen() {
   }, [payload, user]);
 
   const fields = form?.template.fields ?? [];
-  const computed = useMemo(() => computeValues(fields, values), [fields, values]);
+  // Item names come from the item master (the server sets them again on save).
+  const itemField = fields.find((f) => f.itemRef);
+  const { data: items } = useApi<Item[]>(itemField ? '/items' : null);
+  const withNames = useMemo(() => {
+    if (!itemField) return values;
+    const code = String(values[itemField.key] ?? '').trim().toUpperCase();
+    const item = items?.find((i) => i.code.toUpperCase() === code);
+    const out = { ...values };
+    for (const f of fields) if (f.prefill === 'item.name') out[f.key] = item?.name_ar ?? '';
+    return out;
+  }, [values, items, itemField, fields]);
+  const computed = useMemo(() => computeValues(fields, withNames), [fields, withNames]);
 
   // Carry-over (e.g. opening balance of the same item from last month) follows the matching answers.
   const carryFields = fields.filter((f) => f.carryFrom);
@@ -254,6 +270,12 @@ export default function FormScreen() {
             <Text style={styles.body}>{form.ccp.correctiveAction}</Text>
           </Card>
         ) : null}
+        {result.ncr_id ? (
+          <Card style={{ backgroundColor: colors.warningLight, borderColor: colors.warning }}>
+            <Text style={[styles.body, { fontWeight: '800', color: colors.warning }]}>📋 فُتح تقرير عدم مطابقة {result.ncr_no} مع إجراء تصحيحي</Text>
+            <Button title="عرض تقرير عدم المطابقة" variant="outline" onPress={() => router.push({ pathname: '/incidents/[id]', params: { id: result.ncr_id! } })} />
+          </Card>
+        ) : null}
         {!pass && result.capa_id && can('capa:update') ? (
           <Button title="فتح الإجراء التصحيحي" variant="danger" onPress={() => router.replace({ pathname: '/capa/[id]', params: { id: result.capa_id! } })} />
         ) : null}
@@ -285,7 +307,11 @@ export default function FormScreen() {
               الجهاز: {form.equipment.code} — {form.equipment.name} {form.equipment.location ? `(${form.equipment.location})` : ''}
             </Text>
           ) : null}
-          {form.minDailyEntries ? (
+          {form.maxGapMinutes ? (
+            <Text style={[styles.hint, { color: colors.warning }]}>
+              ⏱ مراقبة دورية: قراءة كل {Math.round((form.maxGapMinutes - 30) / 60) || 1} ساعة — تنبيه إداري إذا مرّت {form.maxGapMinutes} دقيقة دون تسجيل
+            </Text>
+          ) : form.minDailyEntries ? (
             <Text style={[styles.hint, { color: colors.warning }]}>⏱ التكرار المطلوب: {form.minDailyEntries} قراءات يومياً كحد أدنى</Text>
           ) : null}
           {form.ccp ? (

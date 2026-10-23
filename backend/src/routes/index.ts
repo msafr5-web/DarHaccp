@@ -6,6 +6,7 @@ import * as users from '../controllers/user.controller';
 import { authenticate, authorize, authorizeCron } from '../middlewares/auth';
 import { validate } from '../middlewares/validate';
 import { runComplianceChecks } from '../services/scheduler.service';
+import { checkMonitoringGaps } from '../services/monitoring.service';
 import { ok } from '../utils/http';
 import alertRoutes from './alert.routes';
 import authRoutes from './auth.routes';
@@ -20,6 +21,7 @@ import kitchenRoutes from './kitchen.routes';
 import qrRoutes from './qr.routes';
 import qualityRoutes from './quality.routes';
 import userRoutes from './user.routes';
+import stockRoutes from './stock.routes';
 import { companyRoutes, platformRoutes, publicRoutes } from './tenant.routes';
 import { runAsSystem } from '../config/database';
 
@@ -32,6 +34,11 @@ api.use('/public', publicRoutes);
 // Serverless deployments have no long-running scheduler: Vercel Cron calls this daily.
 api.get('/internal/cron/compliance', authorizeCron, async (_req, res) => {
   ok(res, await runAsSystem(() => runComplianceChecks()));
+});
+
+// Periodic monitoring gaps (2-hourly readings): for an external scheduler calling every 10–15 minutes.
+api.get('/internal/cron/monitoring', authorizeCron, async (_req, res) => {
+  ok(res, await checkMonitoringGaps());
 });
 
 // Smart probes authenticate with their own device key (X-Device-Key), not a user session.
@@ -56,6 +63,7 @@ api.use('/equipment', equipmentRoutes);
 api.use(qualityRoutes);
 api.use(confectioneryRoutes);
 api.use(hseRoutes);
+api.use(stockRoutes);
 api.get('/audit-logs', authorize('audit:read'), validate({ query: audit.auditQuery }), audit.list);
 
 export default api;

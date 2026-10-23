@@ -1,5 +1,7 @@
 import { Pressable, Text, View } from 'react-native';
-import type { FormField } from '../api/types';
+import type { FormField, Item, StockBatch } from '../api/types';
+import { EXPIRY_STATUS, STORAGE_CONDITION } from '../constants';
+import { useApi } from '../hooks/useApi';
 import {
   activeLimits, describeLimits, deviates, inputError, isTime, minutesBetween, nowTime, optionLabel, thisMonth, today, Value, Values,
 } from '../formLogic';
@@ -63,8 +65,14 @@ export function FieldInput({ field, value, values, onChange, locked }: {
   const error = inputError(field, value, values);
 
   if (field.compute) return <ReadOnly field={field} value={value} values={values} note="🧮 يُحسب تلقائياً" />;
+  if (field.prefill === 'item.name') return <ReadOnly field={field} value={value} values={values} note="📚 من جدول الأصناف الرئيسي" />;
   if (locked === 'auto') return <ReadOnly field={field} value={value} values={values} note="📍 من موقع رمز QR" />;
   if (locked === 'carried') return <ReadOnly field={field} value={value} values={values} note="↪ مُرحَّل آلياً من السجل السابق" />;
+
+  if (field.itemRef) return <ItemPicker field={field} label={label} value={value} onChange={onChange} />;
+  if (field.stockBatchOf) {
+    return <BatchPicker field={field} label={label} value={value} item={values[field.stockBatchOf]} onChange={onChange} />;
+  }
 
   if (field.type === 'boolean') {
     return (
@@ -168,6 +176,86 @@ export function AnswerRow({ field, value, deviating }: { field: FormField; value
       <Text style={[styles.body, { fontWeight: '700', color: deviating ? colors.danger : colors.text, flexShrink: 1 }]}>
         {deviating ? '⚠ ' : ''}{shown}
       </Text>
+    </View>
+  );
+}
+
+/** Item code from the company's item master (foreign key): search by code or name, pick from the list. */
+function ItemPicker({ field, label, value, onChange }: { field: FormField; label: string; value: Value; onChange: (v: Value) => void }) {
+  const { data: items } = useApi<Item[]>('/items');
+  const text = typeof value === 'string' ? value : '';
+  const q = text.trim().toLowerCase();
+  const exact = (items ?? []).find((i) => i.code.toLowerCase() === q);
+  const matches = exact ? [] : (items ?? []).filter((i) => !q || i.code.toLowerCase().includes(q) || i.name_ar.toLowerCase().includes(q)).slice(0, 6);
+  const storage = exact ? STORAGE_CONDITION[exact.storage_condition] : null;
+  return (
+    <View style={{ marginBottom: 14 }}>
+      <Input label={label} value={text} onChangeText={onChange} autoCapitalize="characters" placeholder="ابحث بالكود أو الاسم"
+        error={!!q && !exact && !matches.length} style={{ marginBottom: -14 }} />
+      {exact ? (
+        <View style={{ marginTop: 18, padding: 10, borderRadius: 10, backgroundColor: colors.successLight }}>
+          <Text style={[styles.body, { fontWeight: '800' }]}>✓ {exact.name_ar}</Text>
+          <Text style={styles.muted}>{storage?.icon} {storage?.label} · {exact.unit}{exact.category ? ` · ${exact.category}` : ''}</Text>
+        </View>
+      ) : matches.length ? (
+        <View style={{ marginTop: 18, borderWidth: 1, borderColor: colors.border, borderRadius: 10 }}>
+          {matches.map((i) => (
+            <Pressable key={i.id} onPress={() => onChange(i.code)} style={{ padding: 10, borderBottomWidth: 1, borderColor: '#F2F4F7' }}>
+              <Text style={styles.body}><Text style={{ fontWeight: '800', color: colors.primary }}>{i.code}</Text> — {i.name_ar}</Text>
+              <Text style={[styles.muted, { fontSize: 12 }]}>{STORAGE_CONDITION[i.storage_condition]?.label} · {i.unit}</Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : (
+        <Text style={[styles.hint, { marginTop: 18 }, q ? { color: colors.danger } : null]}>
+          {q ? '⛔ غير موجود في جدول الأصناف الرئيسي' : items && !items.length ? 'جدول الأصناف فارغ — أضف الأصناف أولاً' : field.hint ?? ''}
+        </Text>
+      )}
+    </View>
+  );
+}
+
+/**
+ * FEFO batch selection: batches of the chosen item in expiry order. Only the earliest-expiring
+ * available batch can be picked; expired batches are blocked (the server enforces the same).
+ */
+function BatchPicker({ field, label, value, item, onChange }: {
+  field: FormField; label: string; value: Value; item: Value; onChange: (v: Value) => void;
+}) {
+  const code = typeof item === 'string' ? item.trim() : '';
+  const { data: batches, loading } = useApi<StockBatch[]>(code ? `/stock/batches?item=${encodeURIComponent(code)}&status=available` : null);
+  return (
+    <View style={{ marginBottom: 14 }}>
+      <Text style={styles.label}>{label}</Text>
+      {!code ? <Text style={styles.hint}>اختر الصنف أولاً لعرض التشغيلات بترتيب الصلاحية (FEFO)</Text>
+        : loading && !batches ? <Text style={styles.hint}>جارٍ تحميل التشغيلات…</Text>
+        : !batches?.length ? <Text style={[styles.hint, { color: colors.danger }]}>لا يوجد رصيد لهذا الصنف في المخزون</Text>
+        : batches.map((b) => {
+          const expired = b.expiry_alert_status === 'Expired';
+          const allowed = b.fefo_next;
+          const selected = value === b.batch_number;
+          const st = EXPIRY_STATUS[b.expiry_alert_status]!;
+          return (
+            <Pressable key={b.id} disabled={!allowed} onPress={() => onChange(b.batch_number)}
+              style={{
+                padding: 12, borderRadius: 10, borderWidth: 1.5, marginBottom: 6, opacity: allowed ? 1 : 0.55,
+                borderColor: selected ? colors.primary : expired ? colors.danger : colors.border,
+                backgroundColor: selected ? colors.primaryLight : expired ? colors.dangerLight : '#fff',
+              }}>
+              <View style={[styles.row, { justifyContent: 'space-between' }]}>
+                <Text style={[styles.body, { fontWeight: '800' }]}>{selected ? '✓ ' : ''}{b.batch_number}</Text>
+                <Text style={{ color: st.color, fontWeight: '700', fontSize: 12 }}>{st.label}</Text>
+              </View>
+              <Text style={styles.muted}>
+                ينتهي {b.expiry_date} ({b.days_remaining} يوم) · الرصيد {b.quantity} {b.unit ?? ''}
+              </Text>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: allowed ? colors.success : expired ? colors.danger : colors.muted }}>
+                {allowed ? '⬅ اصرف هذه أولاً (FEFO)' : expired ? '⛔ منتهية — يُمنع الصرف' : 'ليست الأقرب انتهاءً'}
+              </Text>
+            </Pressable>
+          );
+        })}
+      {field.hint ? <Text style={styles.hint}>{field.hint}</Text> : null}
     </View>
   );
 }

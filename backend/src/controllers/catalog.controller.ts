@@ -21,6 +21,8 @@ const base = {
   ccpCode: z.string().trim().regex(/^[A-Z0-9-]{2,20}$/).nullable(),
   fields: formFieldsSchema,
   minDailyEntries: z.number().int().min(0).max(24),
+  /** Periodic monitoring: alert after this many minutes without a reading (0 = off), e.g. 150 for "every 2 h". */
+  maxGapMinutes: z.number().int().min(0).max(1440),
   isDefault: z.boolean(),
 };
 
@@ -32,6 +34,7 @@ export const catalogCreateSchema = z.object({
   ccpCode: base.ccpCode.default(null),
   category: base.category.default('HACCP'),
   minDailyEntries: base.minDailyEntries.default(0),
+  maxGapMinutes: base.maxGapMinutes.default(0),
   isDefault: base.isDefault.default(false),
 });
 

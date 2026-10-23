@@ -2,6 +2,7 @@ import { router, Stack, useSegments } from 'expo-router';
 import { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { I18nManager, Platform } from 'react-native';
+import { AlertAlarm } from '@/components/AlertAlarm';
 import { Loading } from '@/components/ui';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { flushOutbox } from '@/offline';
@@ -93,6 +94,9 @@ function RootNavigator() {
         <Stack.Screen name="users/index" options={{ title: 'الموظفون والصلاحيات' }} />
         <Stack.Screen name="equipment/index" options={{ title: 'الأجهزة ومسجلات البيانات' }} />
         <Stack.Screen name="equipment/[id]" options={{ title: 'الجهاز' }} />
+        <Stack.Screen name="items/index" options={{ title: 'جدول الأصناف الرئيسي' }} />
+        <Stack.Screen name="stock/index" options={{ title: 'المخزون والصلاحية (FEFO)' }} />
+        <Stack.Screen name="trace/index" options={{ title: 'تتبع التشغيلة (Recall)' }} />
         <Stack.Screen name="template-options/[id]" options={{ title: 'القوائم المعتمدة' }} />
         <Stack.Screen name="capa/[id]" options={{ title: 'إجراء تصحيحي (CAPA)' }} />
         <Stack.Screen name="incidents/index" options={{ title: 'الحوادث وعدم المطابقة' }} />
@@ -117,6 +121,7 @@ export default function RootLayout() {
       <StatusBar style="light" />
       <OutboxSync />
       <RootNavigator />
+      <AlertAlarm />
     </AuthProvider>
   );
 }

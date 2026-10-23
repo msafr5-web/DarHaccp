@@ -3,6 +3,7 @@ import { env } from '../config/env';
 import { logger } from '../config/logger';
 import { Alert, AlertSource, insertAlert, NewAlert } from '../models/alert.model';
 import { publishAlert } from './alert.service';
+import { checkMonitoringGaps, STOCK_EXPIRY_SQL } from './monitoring.service';
 
 // Arbitrary constant: only one API instance runs the checks at a time (pg advisory lock).
 const SCHEDULER_LOCK_ID = 774_201;
@@ -12,6 +13,8 @@ const SCHEDULER_LOCK_ID = 774_201;
  *  - health certificates expiring within HEALTH_CERT_WARNING_DAYS (or already expired)
  *  - equipment whose preventive maintenance is due within 7 days (or overdue)
  *  - forms filled fewer times than their minimum daily frequency the previous day
+ *  - stock batches expired / expiring within 7 days (FEFO)
+ *  - periodic monitoring gaps (e.g. no environmental reading for 2 h 30)
  * Idempotent: an unresolved alert per source is never duplicated, and alerts whose
  * cause disappeared (certificate renewed, maintenance done) are auto-resolved.
  */
@@ -162,6 +165,18 @@ async function runChecks(): Promise<{ created: number }> {
        ) counted WHERE done < required`,
       [env.APP_TIMEZONE],
     );
+    // FEFO: batches with stock that are expired (block & discard) or expire within 7 days (dispatch first).
+    const stock = await db.query<{ id: string; tenant_id: number; item_code: string; item_name: string; batch_number: string;
+      expiry_date: string; quantity: string; days: number }>(STOCK_EXPIRY_SQL);
+    const supportId = (await db.query<{ id: number }>(`SELECT id FROM departments WHERE code = 'SUPPORT'`)).rows[0]?.id ?? null;
+    await sync('STOCK_EXPIRY', stock.rows.map((b) => ({
+      tenantId: b.tenant_id, sourceType: 'STOCK_EXPIRY' as const, sourceId: b.id, departmentId: supportId,
+      severity: b.days < 0 ? ('HIGH' as const) : ('MEDIUM' as const),
+      title: b.days < 0 ? 'مخزون منتهي الصلاحية — يُمنع صرفه' : 'مخزون قارب على الانتهاء — اصرفه أولاً (FEFO)',
+      message: `${b.item_name} (${b.item_code}) — تشغيلة ${b.batch_number}: الرصيد ${Number(b.quantity)}، `
+        + (b.days < 0 ? `انتهت في ${b.expiry_date}` : `تنتهي في ${b.expiry_date} (${b.days} يوم)`),
+    })));
+
     await sync('MISSED_MONITORING', missed.rows.map((m) => ({
       tenantId: m.tenant_id, sourceType: 'MISSED_MONITORING' as const, sourceId: m.id, departmentId: m.department_id,
       severity: m.done === 0 ? ('HIGH' as const) : ('MEDIUM' as const),
@@ -173,8 +188,9 @@ async function runChecks(): Promise<{ created: number }> {
 
   if (skipped) return { created: 0 };
   created.forEach(publishAlert);
+  const gaps = await checkMonitoringGaps();
   if (created.length) logger.info({ created: created.length }, 'Compliance checks raised new alerts');
-  return { created: created.length };
+  return { created: created.length + gaps.created };
 }
 
 export function startScheduler(): () => void {

@@ -89,9 +89,13 @@ export interface FormField {
   carryFrom?: string;
   carryMatch?: string[];
   compute?: FieldCompute;
-  prefill?: 'equipment.code' | 'equipment.name' | 'equipment.location' | 'branch.name';
+  prefill?: 'equipment.code' | 'equipment.name' | 'equipment.location' | 'branch.name' | 'item.name';
   onCriticalDeviation?: string;
   companyOptions?: boolean;
+  itemRef?: boolean;
+  ncrWhen?: string | boolean;
+  stock?: { mode: 'count' | 'issue'; item: string; batch: string; expiry?: string };
+  stockBatchOf?: string;
   unit?: string;
   required?: boolean;
   options?: string[];
@@ -249,6 +253,7 @@ export interface ResolvedForm {
   context?: FillContext;
   prefill?: Record<string, unknown>;
   minDailyEntries?: number;
+  maxGapMinutes?: number;
   department: Department | null;
   template: { id: string; code: string; titleAr: string; titleEn: string; description: string | null; version: number; fields: FormField[] };
   ccp: { code: string; nameAr: string; hazard: string; criticalLimit: string; correctiveAction: string } | null;
@@ -278,6 +283,8 @@ export interface MonitoringRecord {
   product_name: string | null;
   recorded_at: string;
   capa_id: string | null;
+  ncr_id: string | null;
+  ncr_no: string | null;
   template_id: string;
   template_code: string;
   data: Record<string, unknown>;
@@ -325,6 +332,7 @@ export interface FormTemplateSummary {
   version: number;
   catalog_id: string | null;
   min_daily_entries: number;
+  max_gap_minutes: number;
 }
 
 /** Platform form library. */
@@ -339,6 +347,7 @@ export interface CatalogForm {
   ccp_code: string | null;
   fields: FormField[];
   min_daily_entries: number;
+  max_gap_minutes: number;
   version: number;
   is_default: boolean;
   is_active: boolean;
@@ -457,4 +466,56 @@ export interface QrLabel {
   company: string;
   payload: string;
   dataUrl: string;
+}
+
+export type StorageCondition = 'CHILLED' | 'FROZEN' | 'AMBIENT' | 'SENSITIVE';
+
+/** Item master entry (forms reference its code like a foreign key). */
+export interface Item {
+  id: string;
+  code: string;
+  name_ar: string;
+  name_en: string | null;
+  category: string | null;
+  storage_condition: StorageCondition;
+  unit: string;
+  is_active: boolean;
+  stock_quantity: number;
+  batches_count: number;
+}
+
+export type ExpiryStatus = 'Safe' | 'Expiring Soon' | 'Expired';
+
+/** Stock balance of one item batch (FEFO engine). */
+export interface StockBatch {
+  id: string;
+  item_code: string;
+  item_name: string;
+  unit: string | null;
+  storage_condition: StorageCondition | null;
+  batch_number: string;
+  expiry_date: string;
+  quantity: number;
+  days_remaining: number;
+  expiry_alert_status: ExpiryStatus;
+  /** The batch that must be issued first for its item. */
+  fefo_next: boolean;
+}
+
+export interface StockMovement {
+  id: number;
+  movement: 'COUNT' | 'ISSUE';
+  quantity_before: number;
+  quantity_after: number;
+  created_at: string;
+  created_by_name: string;
+  record_id: string;
+  department_code: Department;
+}
+
+export interface TraceResult {
+  batch: string;
+  records: MonitoringRecord[];
+  stock: { id: string; item_code: string; item_name: string; batch_number: string; expiry_date: string; quantity: number; issued_total: number }[];
+  ncrs: { id: string; incident_no: string; title: string; status: string; severity: Severity; record_id: string; occurred_at: string }[];
 }

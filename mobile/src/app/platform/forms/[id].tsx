@@ -23,6 +23,7 @@ export default function CatalogFormScreen() {
   const [category, setCategory] = useState('WMS_GDP');
   const [department, setDepartment] = useState<'ANY' | Department>('ANY');
   const [minDaily, setMinDaily] = useState('0');
+  const [maxGap, setMaxGap] = useState('0');
   const [isDefault, setIsDefault] = useState(false);
   const [isActive, setIsActive] = useState(true);
   const [drafts, setDrafts] = useState<FieldDraft[]>([]);
@@ -32,7 +33,7 @@ export default function CatalogFormScreen() {
   useEffect(() => {
     if (!form) return;
     setCode(form.code); setTitleAr(form.title_ar); setTitleEn(form.title_en); setDescription(form.description ?? '');
-    setCategory(form.category); setDepartment(form.department_code ?? 'ANY'); setMinDaily(String(form.min_daily_entries));
+    setCategory(form.category); setDepartment(form.department_code ?? 'ANY'); setMinDaily(String(form.min_daily_entries)); setMaxGap(String(form.max_gap_minutes ?? 0));
     setIsDefault(form.is_default); setIsActive(form.is_active); setDrafts(toDrafts(form.fields));
   }, [form]);
 
@@ -47,7 +48,7 @@ export default function CatalogFormScreen() {
     setMessage(null);
     const body = {
       titleAr: titleAr.trim(), titleEn: titleEn.trim() || titleAr.trim(), description: description.trim() || null, category,
-      department: department === 'ANY' ? null : department, fields, minDailyEntries: Number(minDaily) || 0, isDefault,
+      department: department === 'ANY' ? null : department, fields, minDailyEntries: Number(minDaily) || 0, maxGapMinutes: Number(maxGap) || 0, isDefault,
     };
     try {
       if (isNew) {
@@ -83,6 +84,8 @@ export default function CatalogFormScreen() {
           options={DEPTS.map((d) => ({ value: d, label: d === 'ANY' ? 'كل الأقسام' : departmentLabel[d] }))} />
         <Input label="الحد الأدنى للتعبئة يومياً (0 = بلا حد)" value={minDaily} onChangeText={setMinDaily} keyboardType="number-pad"
           hint="عند عدم استيفائه يُرفع تنبيه «مراقبة ناقصة» صباح اليوم التالي" />
+        <Input label="أقصى مدة بين قراءتين بالدقائق (0 = بلا حد)" value={maxGap} onChangeText={setMaxGap} keyboardType="number-pad"
+          hint="مثال: قراءة كل ساعتين ← 150 دقيقة (ساعتان ونصف) ثم تنبيه «تأخر تسجيل المراقبة»" />
         <View style={[styles.row, { justifyContent: 'space-between', marginBottom: 10 }]}>
           <Text style={styles.body}>يُعطى تلقائياً لكل شركة جديدة</Text>
           <Switch value={isDefault} onValueChange={setIsDefault} trackColor={{ true: colors.primary }} />

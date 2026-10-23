@@ -4,7 +4,7 @@ import { env } from '../config/env';
 import { logger } from '../config/logger';
 import { CHECKLISTS } from '../services/auditChecklists';
 import type { FormField } from '../models/haccp.model';
-import { provisionCategory, syncCatalogSeed } from '../services/formCatalog.service';
+import { provisionCategory, syncCatalogSeed, upgradeBuiltinForms } from '../services/formCatalog.service';
 import { provisionTenantDefaults } from '../services/provisioning.service';
 import { generateQrToken } from '../services/qr.service';
 import { encrypt } from '../utils/crypto';
@@ -81,6 +81,14 @@ async function seed() {
        ON CONFLICT (tenant_id, employee_no) DO NOTHING`,
       [env.SEED_ADMIN_EMAIL, passwordHash],
     );
+    for (const it of data.demoItems) {
+      await db.query(
+        `INSERT INTO items (code, name_ar, category, storage_condition, unit) VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (tenant_id, (UPPER(code))) DO NOTHING`,
+        [it.code, it.nameAr, it.category, it.storage, it.unit],
+      );
+    }
+
     for (const u of data.users) {
       await db.query(
         `INSERT INTO users (employee_no, full_name, email, password_hash, role, department_id, branch_id)
@@ -184,6 +192,10 @@ async function seed() {
       );
     }
   });
+
+  // Built-in library forms changed in code (new revision): upgrade them and the companies that follow them.
+  const upgrades = await upgradeBuiltinForms({ userAgent: 'seed' });
+  if (upgrades.length) logger.info({ upgrades }, 'Built-in library forms upgraded');
 
   logger.info(`Seed complete. Admin: ${env.SEED_ADMIN_EMAIL} (password from SEED_ADMIN_PASSWORD)`);
 }

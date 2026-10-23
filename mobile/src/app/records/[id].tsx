@@ -45,7 +45,8 @@ export default function RecordScreen() {
   const fillEdit = user.role === 'ADMIN' || user.record_access === 'FILL_EDIT';
   const ownOrCross = CROSS.includes(user.role) || r.recorded_by === user.id;
   const formChanged = r.template_current_version !== undefined && r.template_current_version !== r.template_version;
-  const canEdit = fillEdit && ownOrCross && r.source !== 'IOT' && !formChanged;
+  const stockRecord = fields.some((f) => f.stock);
+  const canEdit = fillEdit && ownOrCross && r.source !== 'IOT' && !formChanged && !stockRecord;
 
   const startEdit = () => {
     const v: Values = {};
@@ -129,6 +130,10 @@ export default function RecordScreen() {
         </Card>
       )}
 
+      {r.ncr_id && !editing ? (
+        <Button title={`📋 تقرير عدم المطابقة ${r.ncr_no ?? ''}`} variant="outline"
+          onPress={() => router.push({ pathname: '/incidents/[id]', params: { id: r.ncr_id! } })} />
+      ) : null}
       {!pass && !editing ? (
         <Card style={{ backgroundColor: colors.dangerLight }}>
           {r.deviations.map((d) => (
@@ -144,6 +149,7 @@ export default function RecordScreen() {
             <Text style={[styles.muted, { textAlign: 'center', marginBottom: 12 }]}>
               {!fillEdit ? '📝 صلاحيتك تعبئة فقط — لا يمكنك تعديل السجلات'
                 : r.source === 'IOT' ? 'قراءات المجسات الآلية لا تُعدَّل'
+                : stockRecord ? 'حركات المخزون لا تُعدَّل (دفتر FEFO) — سجّل جرداً أو حركة تصحيحية'
                 : formChanged ? 'تغيّرت حقول النموذج منذ تعبئة هذا السجل — لا يمكن تعديله'
                 : 'يمكنك تعديل السجلات التي عبأتها أنت فقط'}
             </Text>
