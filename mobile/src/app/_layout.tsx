@@ -63,6 +63,8 @@ function RootNavigator() {
       <Stack.Screen name="register" options={{ headerShown: false }} />
       <Stack.Screen name="activate" options={{ headerShown: false }} />
       <Stack.Screen name="forgot" options={{ headerShown: false }} />
+      <Stack.Screen name="login-link" options={{ headerShown: false }} />
+      <Stack.Screen name="c/[code]" options={{ headerShown: false }} />
 
       <Stack.Protected guard={!!user && isPlatform}>
         <Stack.Screen name="platform/index" options={{ title: 'إدارة المنصة' }} />

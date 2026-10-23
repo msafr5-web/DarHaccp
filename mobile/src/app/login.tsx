@@ -5,23 +5,20 @@ import { errorMessage } from '@/api/client';
 import { AuthCard, AuthField, AuthShell, authStyles, Notice, useServerHealth } from '@/components/AuthShell';
 import { InstallPrompt } from '@/components/InstallPrompt';
 import { Button, styles } from '@/components/ui';
+import { forgetCompany, RememberedCompany, rememberedCompany } from '@/companyLink';
 import { LoginChallenge, useAuth } from '@/context/AuthContext';
 import { colors } from '@/theme';
 
-const DEMO_CODE = 'DarAl0000020102026';
-const DEMO_ACCOUNTS = [
-  { label: 'مدير الشركة', email: 'admin@daraldhiafa.sa' },
-  { label: 'مسؤول الهاسب', email: 'haccp@daraldhiafa.sa' },
-  { label: 'مشرف البارد', email: 'cold.supervisor@daraldhiafa.sa' },
-  { label: 'شيف البارد', email: 'cold.chef@daraldhiafa.sa' },
-];
-
-/** Two-step sign-in: company code + e-mail + password, then the 6-digit code e-mailed on every login. */
+/**
+ * Sign-in: official e-mail + password, then the 6-digit code e-mailed on every login.
+ * No company code to remember — the e-mail is unique on the platform. When opened from the
+ * company's personal login link (/c/<code>), the page is branded with the company name.
+ */
 export default function LoginScreen() {
   const params = useLocalSearchParams<{ code?: string; email?: string }>();
-  const { startLogin, verifyOtp, resendOtp, lastCompanyCode } = useAuth();
+  const { startLogin, verifyOtp, resendOtp } = useAuth();
   const [server, recheck] = useServerHealth();
-  const [companyCode, setCompanyCode] = useState(params.code ?? '');
+  const [company, setCompany] = useState<RememberedCompany | null>(null);
   const [email, setEmail] = useState(params.email ?? '');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -33,8 +30,10 @@ export default function LoginScreen() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (!params.code) lastCompanyCode().then((c) => c && setCompanyCode((v) => v || c));
-  }, [params.code, lastCompanyCode]);
+    rememberedCompany().then((c) => {
+      if (c && (!params.code || c.code.toLowerCase() === params.code.toLowerCase())) setCompany(c);
+    });
+  }, [params.code]);
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -58,7 +57,7 @@ export default function LoginScreen() {
 
   const submitPassword = () =>
     run(async () => {
-      const c = await startLogin(companyCode, email, password);
+      const c = await startLogin(email, password, company?.code);
       setChallenge(c);
       setOtp('');
       setCooldown(60);
@@ -72,11 +71,20 @@ export default function LoginScreen() {
   return (
     <AuthShell server={server} showFeatures>
       {!challenge ? (
-        <AuthCard title="تسجيل الدخول" subtitle="أدخل رمز شركتك وبيانات حسابك — سيصلك رمز تحقق على بريدك">
+        <AuthCard
+          title={company ? `الدخول إلى ${company.name}` : 'تسجيل الدخول'}
+          subtitle="أدخل بريدك الرسمي وكلمة المرور — سيصلك رمز تحقق على بريدك"
+        >
           {banner ? <Notice text={`🔌 ${banner}`} /> : null}
-          <AuthField label="رمز الشركة" icon="🏢" value={companyCode} onChangeText={setCompanyCode} autoCapitalize="none"
-            autoCorrect={false} placeholder="مثال: RuknH7768723102026" />
-          <AuthField label="البريد الإلكتروني" icon="✉️" value={email} onChangeText={setEmail} autoCapitalize="none"
+          {company ? (
+            <View style={[styles.row, { justifyContent: 'space-between', backgroundColor: colors.primaryLight, borderRadius: 12, padding: 12, marginBottom: 14 }]}>
+              <Text style={[styles.body, { fontWeight: '700', flex: 1 }]}>🏢 {company.name}</Text>
+              <Pressable onPress={() => { void forgetCompany(); setCompany(null); router.setParams({ code: undefined }); }}>
+                <Text style={{ color: colors.muted, fontSize: 12, fontWeight: '600' }}>ليست شركتي</Text>
+              </Pressable>
+            </View>
+          ) : null}
+          <AuthField label="البريد الإلكتروني الرسمي" icon="✉️" value={email} onChangeText={setEmail} autoCapitalize="none"
             autoComplete="email" keyboardType="email-address" placeholder="name@company.sa" />
           <AuthField label="كلمة المرور" icon="🔒" value={password} onChangeText={setPassword} secureTextEntry={!showPassword}
             autoComplete="password" placeholder="••••••••" onSubmitEditing={submitPassword}
@@ -84,26 +92,15 @@ export default function LoginScreen() {
               <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 13 }}>{showPassword ? 'إخفاء' : 'إظهار'}</Text>
             </Pressable>} />
           {error ? <Notice text={`⚠️ ${error}`} /> : null}
-          <Button title="متابعة" onPress={submitPassword} loading={busy} disabled={!companyCode.trim() || !email || !password} />
-          <View style={[styles.row, { justifyContent: 'space-between', marginTop: 4 }]}>
+          <Button title="متابعة" onPress={submitPassword} loading={busy} disabled={!email.trim() || !password} />
+          <View style={[styles.row, { justifyContent: 'space-between', flexWrap: 'wrap', marginTop: 4 }]}>
             <Pressable onPress={() => router.push('/forgot')}><Text style={authStyles.link}>نسيت كلمة المرور؟</Text></Pressable>
-            <Pressable onPress={() => router.push('/register')}><Text style={authStyles.link}>تسجيل شركة جديدة ←</Text></Pressable>
+            <Pressable onPress={() => router.push('/login-link')}><Text style={authStyles.link}>أرسل لي رابط الدخول</Text></Pressable>
           </View>
-
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14, marginBottom: 10 }}>
-            <View style={{ flex: 1, height: 1, backgroundColor: '#EAECF0' }} />
-            <Text style={{ color: colors.muted, fontSize: 12 }}>حسابات الشركة التجريبية</Text>
-            <View style={{ flex: 1, height: 1, backgroundColor: '#EAECF0' }} />
-          </View>
-          <View style={[styles.row, { flexWrap: 'wrap', gap: 8 }]}>
-            {DEMO_ACCOUNTS.map((a) => (
-              <Pressable key={a.email} onPress={() => { setCompanyCode(DEMO_CODE); setEmail(a.email); setError(null); }}
-                style={{ paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, borderWidth: 1,
-                  borderColor: email === a.email ? colors.primary : colors.border, backgroundColor: email === a.email ? colors.primaryLight : '#fff' }}>
-                <Text style={{ fontSize: 13, fontWeight: '600', color: email === a.email ? colors.primary : colors.text }}>{a.label}</Text>
-              </Pressable>
-            ))}
-          </View>
+          <View style={{ height: 1, backgroundColor: '#EAECF0', marginVertical: 10 }} />
+          <Pressable onPress={() => router.push('/register')}>
+            <Text style={[authStyles.link, { textAlign: 'center' }]}>شركة جديدة؟ سجّل اشتراكك الآن ←</Text>
+          </Pressable>
         </AuthCard>
       ) : (
         <AuthCard title="رمز التحقق" subtitle={`أرسلنا رمزاً من 6 أرقام إلى ${challenge.email} — صالح 5 دقائق`}>
@@ -123,6 +120,7 @@ export default function LoginScreen() {
               setInfo(`تم إرسال رمز جديد إلى ${r.email}`);
             })}
           />
+          <Text style={[styles.hint, { textAlign: 'center' }]}>لم يصل الرمز؟ تحقق من مجلد Spam / الرسائل غير المرغوبة</Text>
           <Pressable onPress={() => { setChallenge(null); setError(null); setOtp(''); }}>
             <Text style={authStyles.link}>→ العودة وتغيير البيانات</Text>
           </Pressable>

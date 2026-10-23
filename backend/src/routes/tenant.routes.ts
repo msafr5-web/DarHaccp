@@ -6,6 +6,7 @@ import { validate } from '../middlewares/validate';
 
 /** Public company sign-up (no session). */
 export const publicRoutes = Router();
+publicRoutes.get('/company/:code', validate({ params: tenants.companyCodeParams }), tenants.companyByCode);
 publicRoutes.get('/register/code-preview', validate({ query: tenants.codePreviewQuery }), tenants.previewCode);
 publicRoutes.post('/register', authRateLimiter, validate({ body: tenants.registerSchema }), tenants.register);
 publicRoutes.post('/register/verify', authRateLimiter, validate({ body: tenants.registrationOtpSchema }), tenants.verifyRegistration);

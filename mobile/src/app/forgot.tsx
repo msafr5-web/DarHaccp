@@ -6,7 +6,6 @@ import { AuthCard, AuthField, AuthShell, authStyles, Notice } from '@/components
 import { Button } from '@/components/ui';
 
 export default function ForgotPasswordScreen() {
-  const [companyCode, setCompanyCode] = useState('');
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -14,20 +13,19 @@ export default function ForgotPasswordScreen() {
 
   return (
     <AuthShell>
-      <AuthCard title="استعادة كلمة المرور" subtitle="أدخل رمز الشركة وبريدك، وسنرسل رابط تعيين كلمة مرور جديدة إن كان الحساب موجوداً">
+      <AuthCard title="استعادة كلمة المرور" subtitle="أدخل بريدك الرسمي وسنرسل إليه رابط تعيين كلمة مرور جديدة إن كان الحساب موجوداً">
         {sent ? (
           <Notice tone="success" text="إذا كانت البيانات صحيحة فستصلك رسالة خلال دقائق تحتوي رابطاً صالحاً لمدة ساعة." />
         ) : (
           <>
-            <AuthField label="رمز الشركة" icon="🏢" value={companyCode} onChangeText={setCompanyCode} autoCapitalize="none" />
             <AuthField label="البريد الإلكتروني" icon="✉️" value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" />
             {error ? <Notice text={`⚠️ ${error}`} /> : null}
-            <Button title="إرسال الرابط" loading={busy} disabled={!companyCode.trim() || !email.trim()}
+            <Button title="إرسال الرابط" loading={busy} disabled={!email.trim()}
               onPress={async () => {
                 setBusy(true);
                 setError(null);
                 try {
-                  await api('/auth/forgot-password', { method: 'POST', body: { companyCode: companyCode.trim(), email: email.trim() } });
+                  await api('/auth/forgot-password', { method: 'POST', body: { email: email.trim() } });
                   setSent(true);
                 } catch (e) {
                   setError(errorMessage(e));

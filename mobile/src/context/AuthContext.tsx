@@ -1,3 +1,4 @@
+import { rememberCompany, rememberedCompany } from '../companyLink';
 import { tokenStorage } from '../storage';
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { api, setAuthToken, setUnauthorizedHandler } from '../api/client';
@@ -5,7 +6,6 @@ import type { Role, User } from '../api/types';
 import { registerForPushNotifications, unregisterPushNotifications } from '../notifications';
 
 const TOKEN_KEY = 'dar_haccp_token';
-const COMPANY_CODE_KEY = 'dar_haccp_company_code';
 
 export interface LoginChallenge {
   challengeId: string;
@@ -17,7 +17,7 @@ interface AuthState {
   user: User | null;
   loading: boolean;
   /** Step 1: company code + e-mail + password → an OTP is e-mailed. */
-  startLogin: (companyCode: string, email: string, password: string) => Promise<LoginChallenge>;
+  startLogin: (email: string, password: string, companyCode?: string) => Promise<LoginChallenge>;
   /** Step 2: the e-mailed 6-digit code → session. */
   verifyOtp: (challengeId: string, code: string) => Promise<void>;
   resendOtp: (challengeId: string) => Promise<{ email: string }>;
@@ -86,13 +86,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => setUnauthorizedHandler(null);
   }, [clearSession]);
 
-  const startLogin = useCallback(async (companyCode: string, email: string, password: string) => {
-    const challenge = await api<LoginChallenge>('/auth/login', {
+  const startLogin = useCallback(async (email: string, password: string, companyCode?: string) => {
+    return api<LoginChallenge>('/auth/login', {
       method: 'POST',
-      body: { companyCode: companyCode.trim(), email: email.trim(), password },
+      body: { email: email.trim(), password, ...(companyCode ? { companyCode } : {}) },
     });
-    await tokenStorage.set(COMPANY_CODE_KEY, companyCode.trim());
-    return challenge;
   }, []);
 
   const verifyOtp = useCallback(async (challengeId: string, code: string) => {
@@ -101,6 +99,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       body: { challengeId, code: code.trim() },
     });
     await tokenStorage.set(TOKEN_KEY, token);
+    // Remember the company on this device for the branded sign-in page next time.
+    if (tenant && u.role !== 'PLATFORM_ADMIN') await rememberCompany({ name: tenant.name, code: tenant.code });
     setAuthToken(token);
     setUser({ ...u, tenant });
     void registerForPushNotifications();
@@ -110,7 +110,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     (challengeId: string) => api<{ email: string }>('/auth/resend-otp', { method: 'POST', body: { challengeId } }),
     [],
   );
-  const lastCompanyCode = useCallback(() => tokenStorage.get(COMPANY_CODE_KEY), []);
+  const lastCompanyCode = useCallback(async () => (await rememberedCompany())?.code ?? null, []);
 
   const signOut = useCallback(async () => {
     await unregisterPushNotifications();

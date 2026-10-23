@@ -64,8 +64,8 @@ export default function RegisterScreen() {
             <Text style={authStyles.codeText} selectable>{registration.code}</Text>
             <Text style={[styles.muted, { marginTop: 6 }]}>الرقم التعريفي: {registration.accountNo}</Text>
           </View>
-          <Notice tone="info" text="احتفظ برمز الشركة — يُطلب عند كل تسجيل دخول. ستصلك رسالة على البريد عند الموافقة تتضمن رابط تفعيل حساب مدير الشركة." />
-          <Button title="العودة لتسجيل الدخول" onPress={() => router.replace({ pathname: '/login', params: { code: registration.code } })} />
+          <Notice tone="info" text="عند الموافقة تصلك رسالة على بريدك الرسمي تتضمن رابط تفعيل حساب المدير ورابط الدخول الخاص بشركتك — لا حاجة لحفظ الرمز." />
+          <Button title="العودة لصفحة الدخول" onPress={() => router.replace('/login')} />
         </AuthCard>
       </AuthShell>
     );

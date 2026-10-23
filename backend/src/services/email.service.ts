@@ -105,15 +105,30 @@ export const emails = {
       ${button(`${env.APP_URL}/platform`, 'فتح لوحة إدارة المنصة')}`),
   }),
 
-  approved: (to: string, t: { name: string; code: string; account_no: string }, activationUrl: string): Email => ({
+  approved: (to: string, t: { name: string; code: string; account_no: string }, activationUrl: string, loginUrl: string): Email => ({
     to,
     subject: `تمت الموافقة على اشتراك ${t.name} — DarHaccp`,
-    text: `تمت الموافقة على اشتراككم. رمز الشركة: ${t.code}. الرقم التعريفي: ${t.account_no}. فعّل حساب المدير: ${activationUrl}`,
-    html: layout('تمت الموافقة على الاشتراك', `<p>يسعدنا إبلاغكم بالموافقة على اشتراك <b>${esc(t.name)}</b>.</p>
-      <table cellpadding="6" style="font-size:15px"><tr><td>رمز الشركة</td><td dir="ltr"><b>${esc(t.code)}</b></td></tr>
+    text: `تمت الموافقة على اشتراككم. 1) فعّل حساب المدير (صالح 72 ساعة): ${activationUrl} 2) رابط الدخول الخاص بشركتكم: ${loginUrl} — رمز الشركة: ${t.code} — الرقم التعريفي: ${t.account_no}`,
+    html: layout('تمت الموافقة على الاشتراك', `<p>يسعدنا إبلاغكم بالموافقة على اشتراك <b>${esc(t.name)}</b> في منصة DarHaccp.</p>
+      <p><b>الخطوة 1 —</b> عيّنوا كلمة مرور مدير الحساب (الرابط صالح 72 ساعة):</p>
+      ${button(activationUrl, 'تفعيل حساب المدير')}
+      <p><b>الخطوة 2 —</b> احفظوا <b>رابط الدخول الخاص بشركتكم</b> (أضيفوه للمفضلة)، ولا حاجة لحفظ رمز الشركة:</p>
+      ${button(loginUrl, 'الدخول إلى منصة شركتكم')}
+      <p style="direction:ltr;text-align:center;font-size:13px;color:#667085">${esc(loginUrl)}</p>
+      <table cellpadding="6" style="font-size:14px;color:#344054"><tr><td>رمز الشركة</td><td dir="ltr"><b>${esc(t.code)}</b></td></tr>
       <tr><td>الرقم التعريفي</td><td><b>${esc(t.account_no)}</b></td></tr></table>
-      <p>احتفظوا برمز الشركة؛ يُطلب عند كل تسجيل دخول. اضغطوا لتعيين كلمة مرور مدير الحساب (الرابط صالح 72 ساعة):</p>
-      ${button(activationUrl, 'تفعيل حساب المدير')}`),
+      <p style="font-size:13px;color:#667085">نسيتم الرابط؟ من صفحة الدخول اختاروا «أرسل لي رابط الدخول» وسيصل إلى هذا البريد.</p>`),
+  }),
+
+  loginLink: (to: string, name: string, t: { name: string; code: string; account_no: string }, loginUrl: string): Email => ({
+    to,
+    subject: `رابط الدخول إلى ${t.name} — DarHaccp`,
+    text: `رابط الدخول الخاص بشركتكم: ${loginUrl} — رمز الشركة: ${t.code}`,
+    html: layout('رابط الدخول الخاص بشركتكم', `<p>مرحباً ${esc(name)}،</p><p>هذا رابط الدخول إلى منصة <b>${esc(t.name)}</b> كما طلبت:</p>
+      ${button(loginUrl, 'الدخول إلى المنصة')}
+      <p style="direction:ltr;text-align:center;font-size:13px;color:#667085">${esc(loginUrl)}</p>
+      <p>رمز الشركة: <b dir="ltr">${esc(t.code)}</b> · الرقم التعريفي: <b>${esc(t.account_no)}</b></p>
+      <p style="font-size:13px;color:#667085">سيُطلب منك رمز تحقق يصل إلى بريدك عند كل دخول.</p>`),
   }),
 
   rejected: (to: string, name: string, reason: string): Email => ({

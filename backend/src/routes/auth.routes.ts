@@ -11,6 +11,7 @@ router.post('/login', authRateLimiter, validate({ body: auth.loginSchema }), aut
 router.post('/verify-otp', authRateLimiter, validate({ body: auth.verifyOtpSchema }), auth.verifyOtp);
 router.post('/resend-otp', authRateLimiter, validate({ body: auth.resendOtpSchema }), auth.resendOtp);
 router.post('/activate', authRateLimiter, validate({ body: auth.activateSchema }), auth.activate);
+router.post('/login-link', authRateLimiter, validate({ body: auth.loginLinkSchema }), auth.sendLoginLink);
 router.post('/forgot-password', authRateLimiter, validate({ body: auth.forgotPasswordSchema }), auth.forgotPassword);
 
 router.get('/me', authenticate, auth.me);

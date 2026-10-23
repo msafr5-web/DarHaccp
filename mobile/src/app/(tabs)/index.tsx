@@ -1,10 +1,11 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { RefreshControl, ScrollView, Text, View } from 'react-native';
+import { Platform, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { api, errorMessage } from '@/api/client';
 import type { MonitoringRecord, Overview } from '@/api/types';
 import { InstallPrompt } from '@/components/InstallPrompt';
 import { Badge, Button, Card, Stat, styles } from '@/components/ui';
+import { companyLoginUrl } from '@/companyLink';
 import { useAuth } from '@/context/AuthContext';
 import { clearRejected, flushOutbox, getOutbox, getRejected, subscribeOutbox } from '@/offline';
 import { colors, departmentLabel, roleLabel, textStart } from '@/theme';
@@ -19,6 +20,7 @@ export default function HomeScreen() {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [outbox, setOutbox] = useState({ pending: 0, rejected: 0 });
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const update = async () => setOutbox({ pending: (await getOutbox()).length, rejected: (await getRejected()).length });
@@ -61,6 +63,18 @@ export default function HomeScreen() {
           <View style={{ marginTop: 10, padding: 10, borderRadius: 10, backgroundColor: colors.primaryLight }}>
             <Text style={[styles.body, { fontWeight: '700' }]}>🏢 {user.tenant.name}</Text>
             <Text style={styles.muted} selectable>رمز الشركة: {user.tenant.code} · الرقم التعريفي: {user.tenant.account_no}</Text>
+            <Text style={[styles.muted, { marginTop: 6 }]}>رابط الدخول الخاص بشركتك (شاركه مع موظفيك):</Text>
+            <View style={[styles.row, { flexWrap: 'wrap' }]}>
+              <Text style={[styles.body, { fontWeight: '700', color: colors.primary, writingDirection: 'ltr', flexShrink: 1 }]} selectable>
+                {companyLoginUrl(user.tenant.code)}
+              </Text>
+              {Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard ? (
+                <Pressable onPress={() => { void navigator.clipboard.writeText(companyLoginUrl(user.tenant!.code)); setCopied(true); }}
+                  style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: colors.primary }}>
+                  <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 12 }}>{copied ? '✓ نُسخ' : 'نسخ'}</Text>
+                </Pressable>
+              ) : null}
+            </View>
           </View>
         ) : null}
       </Card>

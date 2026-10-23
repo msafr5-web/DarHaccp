@@ -4,6 +4,7 @@ import { Text, View } from 'react-native';
 import { api, errorMessage } from '@/api/client';
 import { AuthCard, AuthField, AuthShell, authStyles, Notice } from '@/components/AuthShell';
 import { Button, styles } from '@/components/ui';
+import { companyLoginUrl } from '@/companyLink';
 
 const rules = [
   { test: (p: string) => p.length >= 10, label: '10 أحرف على الأقل' },
@@ -38,10 +39,13 @@ export default function ActivateScreen() {
       <AuthShell>
         <AuthCard title="✅ تم تعيين كلمة المرور" subtitle="يمكنك الآن تسجيل الدخول — سيصلك رمز تحقق على بريدك عند كل دخول">
           <View style={authStyles.codeBox}>
-            <Text style={styles.muted}>رمز الشركة</Text>
-            <Text style={authStyles.codeText} selectable>{result.companyCode}</Text>
+            <Text style={styles.muted}>رابط الدخول الخاص بشركتك — احفظه في المفضلة</Text>
+            <Text style={[styles.body, { fontWeight: '800', color: '#0B5D3B', writingDirection: 'ltr' }]} selectable>
+              {companyLoginUrl(result.companyCode)}
+            </Text>
+            <Text style={[styles.hint, { textAlign: 'center' }]}>وصلك الرابط أيضاً على بريدك، ويمكن إعادة إرساله في أي وقت</Text>
           </View>
-          <Button title="تسجيل الدخول" onPress={() => router.replace({ pathname: '/login', params: { code: result.companyCode, email: result.email } })} />
+          <Button title="تسجيل الدخول" onPress={() => router.replace({ pathname: '/c/[code]', params: { code: result.companyCode, email: result.email } })} />
         </AuthCard>
       </AuthShell>
     );

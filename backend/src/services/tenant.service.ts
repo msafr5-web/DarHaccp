@@ -126,6 +126,24 @@ export async function confirmRegistration(challengeId: string, code: string) {
   });
 }
 
+/** The company's personal sign-in link (company pre-selected, e-mail pre-filled). */
+export function companyLoginUrl(code: string, email?: string) {
+  const base = `${env.APP_URL.replace(/\/+$/, '')}/c/${encodeURIComponent(code)}`;
+  return email ? `${base}?email=${encodeURIComponent(email)}` : base;
+}
+
+/** Public branding for a company login link: only the name of an ACTIVE company. */
+export async function publicCompany(code: string) {
+  return runAsSystem(async () => {
+    const { rows } = await query<{ name: string; code: string }>(
+      `SELECT name, code FROM tenants WHERE LOWER(code) = LOWER($1) AND status = 'ACTIVE' AND NOT is_platform`,
+      [code],
+    );
+    if (!rows[0]) throw AppError.notFound('Company');
+    return rows[0];
+  });
+}
+
 // ---------------------------------------------------------------- password tokens (activation / reset)
 
 const hashToken = (token: string) => createHash('sha256').update(token).digest('hex');
@@ -197,7 +215,7 @@ export async function approveTenant(ctx: DbContext, id: number, notes?: string) 
     });
 
     const activationUrl = await issuePasswordToken(adminId, id, 'ACTIVATION', 72);
-    await sendEmail(emails.approved(approved.email, approved, activationUrl));
+    await sendEmail(emails.approved(approved.email, approved, activationUrl, companyLoginUrl(approved.code, approved.email)));
     return approved;
   });
 }
@@ -243,6 +261,6 @@ export async function resendActivation(id: number) {
     );
     if (!rows[0]) throw AppError.notFound('Company administrator');
     const url = await issuePasswordToken(rows[0].id, id, 'ACTIVATION', 72);
-    await sendEmail(emails.approved(tenant.email, tenant, url));
+    await sendEmail(emails.approved(tenant.email, tenant, url, companyLoginUrl(tenant.code, tenant.email)));
   });
 }

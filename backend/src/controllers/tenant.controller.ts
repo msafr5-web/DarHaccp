@@ -4,7 +4,7 @@ import { query, runAsSystem } from '../config/database';
 import { emails, sendEmail } from '../services/email.service';
 import { maskEmail, OTP_TTL_MINUTES, resendChallenge } from '../services/otp.service';
 import {
-  approveTenant, buildCompanyCode, confirmRegistration, normalizePhone, registerCompany, resendActivation, setTenantStatus,
+  approveTenant, buildCompanyCode, confirmRegistration, normalizePhone, publicCompany, registerCompany, resendActivation, setTenantStatus,
 } from '../services/tenant.service';
 import { AppError } from '../utils/AppError';
 import { created, dbContext, ok, paginate, requireUser } from '../utils/http';
@@ -50,6 +50,14 @@ export async function register(req: Request, res: Response) {
     challengeId,
     email: maskEmail(tenant.email),
   });
+}
+
+export const companyCodeParams = z.object({ code: z.string().trim().min(4).max(60) });
+
+/** Branding for a company login link (/c/<code>): the company name only. */
+export async function companyByCode(req: Request, res: Response) {
+  const { code } = req.valid.params as z.infer<typeof companyCodeParams>;
+  return ok(res, await publicCompany(code));
 }
 
 export async function verifyRegistration(req: Request, res: Response) {

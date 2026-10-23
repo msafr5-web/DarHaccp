@@ -7,7 +7,7 @@ import { insertAuditEvent } from '../models/audit.model';
 import { findUserById, findUserForLogin } from '../models/user.model';
 import { emails, sendEmail } from '../services/email.service';
 import { createChallenge, maskEmail, OTP_TTL_MINUTES, resendChallenge, verifyChallenge } from '../services/otp.service';
-import { consumePasswordToken, issuePasswordToken } from '../services/tenant.service';
+import { companyLoginUrl, consumePasswordToken, issuePasswordToken } from '../services/tenant.service';
 import { AppError } from '../utils/AppError';
 import { dbContext, ok, requireUser } from '../utils/http';
 import { uuid } from '../utils/schemas';
@@ -25,7 +25,8 @@ export const passwordPolicy = z
   .regex(/[a-z]/, 'كلمة المرور تحتاج حرفاً صغيراً (a-z)')
   .regex(/\d/, 'كلمة المرور تحتاج رقماً');
 
-const companyCode = z.string().trim().min(4).max(60);
+/** Optional: the e-mail alone identifies the account (it is unique on the whole platform). */
+const companyCode = z.string().trim().min(4).max(60).optional();
 
 export const loginSchema = z.object({
   companyCode,
@@ -77,10 +78,21 @@ export async function login(req: Request, res: Response) {
   const { companyCode: code, email, password } = req.valid.body as z.infer<typeof loginSchema>;
 
   const result = await runAsSystem(async () => {
-    const { rows: tenants } = await query<{ id: number; status: string; name: string }>(
-      `SELECT id, status, name FROM tenants WHERE LOWER(code) = LOWER($1) AND status <> 'REJECTED' ORDER BY id DESC LIMIT 1`,
-      [code],
-    );
+    // Company from the code (company login link) or, without a code, from the e-mail itself.
+    const { rows: tenants } = code
+      ? await query<{ id: number; status: string; name: string }>(
+          `SELECT id, status, name FROM tenants WHERE LOWER(code) = LOWER($1) ORDER BY id DESC LIMIT 1`,
+          [code],
+        )
+      : await query<{ id: number; status: string; name: string }>(
+          `SELECT t.id, t.status, t.name FROM users u JOIN tenants t ON t.id = u.tenant_id
+            WHERE LOWER(u.email) = LOWER($1) AND u.employee_no <> 'SYS-IOT'
+           UNION ALL
+           SELECT t.id, t.status, t.name FROM tenants t
+            WHERE LOWER(t.email) = LOWER($1) AND NOT EXISTS (SELECT 1 FROM users u WHERE u.tenant_id = t.id)
+           LIMIT 1`,
+          [email],
+        );
     const tenant = tenants[0];
     const fail = async (reason: string, userId?: string) => {
       await recordAttempt(req, { tenantId: tenant?.id, userId, companyCode: code, email, stage: 'PASSWORD', success: false, reason });
@@ -204,13 +216,37 @@ export async function forgotPassword(req: Request, res: Response) {
   await runAsSystem(async () => {
     const { rows } = await query<{ id: string; tenant_id: number; full_name: string; email: string }>(
       `SELECT u.id, u.tenant_id, u.full_name, u.email FROM users u JOIN tenants t ON t.id = u.tenant_id
-        WHERE LOWER(t.code) = LOWER($1) AND t.status = 'ACTIVE' AND LOWER(u.email) = LOWER($2) AND u.is_active`,
-      [code, email],
+        WHERE ($1::text IS NULL OR LOWER(t.code) = LOWER($1)) AND t.status = 'ACTIVE' AND LOWER(u.email) = LOWER($2)
+          AND u.is_active AND u.employee_no <> 'SYS-IOT'`,
+      [code ?? null, email],
     );
     const user = rows[0];
     if (!user) return;
     const url = await issuePasswordToken(user.id, user.tenant_id, 'RESET', 1);
     await sendEmail(emails.passwordReset(user.email, user.full_name, url));
+  }).catch((err) => {
+    if (!(err instanceof AppError && err.code === 'EMAIL_UNAVAILABLE')) throw err;
+  });
+  return ok(res, { sent: true });
+}
+
+export const loginLinkSchema = z.object({ email: z.email().max(255) });
+
+/**
+ * "I forgot my company's login link": e-mails the company name, code and personal login link
+ * to the account's official e-mail. Always answers the same way (no account discovery).
+ */
+export async function sendLoginLink(req: Request, res: Response) {
+  const { email } = req.valid.body as z.infer<typeof loginLinkSchema>;
+  await runAsSystem(async () => {
+    const { rows } = await query<{ full_name: string; email: string; name: string; code: string; account_no: string }>(
+      `SELECT u.full_name, u.email, t.name, t.code, t.account_no FROM users u JOIN tenants t ON t.id = u.tenant_id
+        WHERE LOWER(u.email) = LOWER($1) AND u.is_active AND t.status = 'ACTIVE' AND u.employee_no <> 'SYS-IOT'`,
+      [email],
+    );
+    const u = rows[0];
+    if (!u) return;
+    await sendEmail(emails.loginLink(u.email, u.full_name, u, companyLoginUrl(u.code, u.email)));
   }).catch((err) => {
     if (!(err instanceof AppError && err.code === 'EMAIL_UNAVAILABLE')) throw err;
   });
