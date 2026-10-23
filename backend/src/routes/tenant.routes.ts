@@ -21,6 +21,7 @@ platformRoutes.post('/tenants/:id/approve', validate({ params: tenants.tenantIdP
 platformRoutes.post('/tenants/:id/reject', validate({ params: tenants.tenantIdParams, body: tenants.reasonSchema }), tenants.reject);
 platformRoutes.post('/tenants/:id/suspend', validate({ params: tenants.tenantIdParams, body: tenants.reasonSchema }), tenants.suspend);
 platformRoutes.post('/tenants/:id/reactivate', validate({ params: tenants.tenantIdParams }), tenants.reactivate);
+platformRoutes.post('/tenants/:id/reopen', validate({ params: tenants.tenantIdParams, body: tenants.reviewSchema }), tenants.reopen);
 platformRoutes.post('/tenants/:id/resend-activation', validate({ params: tenants.tenantIdParams }), tenants.resendActivationLink);
 platformRoutes.get('/login-attempts', validate({ query: tenants.attemptsQuery }), tenants.platformAttempts);
 

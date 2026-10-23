@@ -11,6 +11,8 @@ const schema = z.object({
   APP_TIMEZONE: z.string().default('Asia/Riyadh'),
 
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
+  /** Direct (non-pooled) connection for migrations; Neon provides it automatically. */
+  DATABASE_URL_UNPOOLED: z.string().min(1).optional(),
   DB_POOL_MAX: z.coerce.number().int().positive().default(20),
   DB_SSL: bool.default(false),
 

@@ -1,6 +1,8 @@
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { pool, useOwnerRole } from '../config/database';
+import { Client } from 'pg';
+import { env } from '../config/env';
+import { useOwnerRole } from '../config/database';
 import { logger } from '../config/logger';
 
 // Works from both src/db (tsx) and dist/db (compiled).
@@ -11,8 +13,14 @@ const LOCK_ID = 774_200;
 export async function migrate() {
   // DDL runs as the database owner; the API itself runs as the RLS-restricted role.
   useOwnerRole();
-  const client = await pool.connect();
+  // Direct connection (not through the PgBouncer pooler): session advisory locks and DDL need it.
+  const client = new Client({
+    connectionString: env.DATABASE_URL_UNPOOLED ?? env.DATABASE_URL,
+    ssl: env.DB_SSL ? { rejectUnauthorized: true } : undefined,
+  });
+  await client.connect();
   try {
+    await client.query('RESET ROLE');
     await client.query('SELECT pg_advisory_lock($1)', [LOCK_ID]);
     await client.query(`CREATE TABLE IF NOT EXISTS schema_migrations (
       name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())`);
@@ -37,16 +45,13 @@ export async function migrate() {
     logger.info('Database schema is up to date');
   } finally {
     await client.query('SELECT pg_advisory_unlock($1)', [LOCK_ID]).catch(() => undefined);
-    client.release();
+    await client.end();
   }
 }
 
 if (require.main === module) {
-  migrate()
-    .then(() => pool.end())
-    .catch(async (err) => {
-      logger.fatal({ err }, 'Migration failed');
-      await pool.end();
-      process.exit(1);
-    });
+  migrate().catch((err) => {
+    logger.fatal({ err }, 'Migration failed');
+    process.exit(1);
+  });
 }

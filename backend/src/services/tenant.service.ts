@@ -77,14 +77,18 @@ export async function registerCompany(input: RegistrationInput, ip?: string) {
     const code = buildCompanyCode(input.name, input.phone, now);
     const phone = normalizePhone(input.phone);
 
+    // The subscriber e-mail is unique across the whole platform, whatever the application status.
     const clash = await query<{ code: string; email: string }>(
-      `SELECT code, email FROM tenants WHERE status <> 'REJECTED' AND (LOWER(code) = LOWER($1) OR LOWER(email) = LOWER($2))`,
+      `SELECT code, email FROM tenants WHERE LOWER(code) = LOWER($1) OR LOWER(email) = LOWER($2)`,
       [code, input.email],
     );
     if (clash.rows.some((r) => r.code.toLowerCase() === code.toLowerCase())) {
       throw AppError.conflict(`رمز الشركة ${code} مسجل مسبقاً — يوجد طلب بنفس الاسم والجوال وتاريخ الاشتراك`);
     }
-    if (clash.rows.length) throw AppError.conflict('البريد الإلكتروني مسجل لشركة أخرى');
+    const userClash = await query(`SELECT 1 FROM users WHERE LOWER(email) = LOWER($1) AND employee_no <> 'SYS-IOT'`, [input.email]);
+    if (clash.rows.length || userClash.rowCount) {
+      throw AppError.conflict('البريد الإلكتروني مسجل مسبقاً في المنصة — كل بريد يُستخدم لحساب واحد فقط');
+    }
 
     const tenant = await withTransaction({ ip }, async (db) => {
       const { rows } = await db.query<Tenant>(
@@ -198,17 +202,20 @@ export async function approveTenant(ctx: DbContext, id: number, notes?: string) 
   });
 }
 
-export async function setTenantStatus(ctx: DbContext, id: number, action: 'REJECT' | 'SUSPEND' | 'REACTIVATE', reason?: string) {
+export async function setTenantStatus(ctx: DbContext, id: number, action: 'REJECT' | 'SUSPEND' | 'REACTIVATE' | 'REOPEN', reason?: string) {
   return runAsSystem(async () => {
     const tenant = await loadTenant(id);
     const transitions: Record<typeof action, { from: TenantStatus[]; to: TenantStatus }> = {
       REJECT: { from: ['PENDING_VERIFICATION', 'PENDING_REVIEW'], to: 'REJECTED' },
       SUSPEND: { from: ['ACTIVE'], to: 'SUSPENDED' },
       REACTIVATE: { from: ['SUSPENDED'], to: 'ACTIVE' },
+      // A rejected application is reviewed again instead of re-registering the same e-mail.
+      REOPEN: { from: ['REJECTED'], to: 'PENDING_REVIEW' },
     };
     const t = transitions[action];
     if (!t.from.includes(tenant.status)) throw AppError.conflict(`لا يمكن تنفيذ الإجراء على حالة ${tenant.status}`);
-    if (action !== 'REACTIVATE' && !reason?.trim()) throw AppError.unprocessable('السبب مطلوب');
+    if ((action === 'REJECT' || action === 'SUSPEND') && !reason?.trim()) throw AppError.unprocessable('السبب مطلوب');
+    if (action === 'REOPEN' && !tenant.email_verified_at) throw AppError.conflict('لم تؤكد الشركة بريدها الإلكتروني');
 
     const updated = await withTransaction({ ...ctx, bypass: true }, async (db) => {
       const { rows } = await db.query<Tenant>(

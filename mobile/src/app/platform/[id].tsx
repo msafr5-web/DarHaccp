@@ -101,6 +101,10 @@ export default function TenantReviewScreen() {
               onPress={() => act('suspend', { reason: notes.trim() }, 'تم إيقاف الحساب — تم قطع جلسات الشركة')} />
           </>
         ) : null}
+        {t.status === 'REJECTED' ? (
+          <Button title="↺ إعادة فتح الطلب للمراجعة" variant="outline" loading={busy}
+            onPress={() => act('reopen', { notes: notes.trim() || undefined }, 'أُعيد الطلب إلى قائمة المراجعة')} />
+        ) : null}
         {t.status === 'SUSPENDED' ? (
           <Button title="▶ إعادة تفعيل الحساب" loading={busy} onPress={() => act('reactivate', {}, 'تمت إعادة التفعيل')} />
         ) : null}

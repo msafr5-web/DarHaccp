@@ -46,11 +46,23 @@ export function useOwnerRole() {
   runtimeRole = '';
 }
 
-async function applyScope(client: PoolClient, scope: TenantScope, local: boolean) {
-  const params = [scope.tenantId?.toString() ?? '', scope.bypass ? 'on' : ''];
-  const setRole = runtimeRole ? `, set_config('role', $3, ${local})` : '';
-  if (runtimeRole) params.push(runtimeRole);
-  await client.query(`SELECT set_config('app.tenant_id', $1, ${local}), set_config('app.bypass_rls', $2, ${local})${setRole}`, params);
+/**
+ * Opens a transaction carrying the tenant scope as TRANSACTION-LOCAL settings.
+ *
+ * Never use session-level settings here: managed Postgres (Neon) sits behind PgBouncer in
+ * transaction-pooling mode, where one server connection is shared by many clients between
+ * transactions — a session setting could leak one company's scope into another request.
+ * Local settings vanish at COMMIT/ROLLBACK, and a transaction is pinned to one server connection.
+ * Values are validated (integer tenant id, regex-checked role) so they can be inlined, which
+ * sends BEGIN and the settings in a single round trip.
+ */
+async function beginScoped(client: PoolClient, scope: TenantScope) {
+  const tenant = scope.tenantId === null ? '' : String(scope.tenantId);
+  if (tenant && !/^\d+$/.test(tenant)) throw new Error('Invalid tenant scope');
+  const role = runtimeRole ? `, set_config('role', '${runtimeRole}', true)` : '';
+  await client.query(
+    `BEGIN; SELECT set_config('app.tenant_id', '${tenant}', true), set_config('app.bypass_rls', '${scope.bypass ? 'on' : ''}', true)${role}`,
+  );
 }
 
 /** Anything that can run a query: the scoped `db` or a transaction client. */
@@ -61,8 +73,13 @@ export interface Queryable {
 export async function query<T extends QueryResultRow = QueryResultRow>(text: string, params?: unknown[]): Promise<QueryResult<T>> {
   const client = await pool.connect();
   try {
-    await applyScope(client, currentScope(), false);
-    return await client.query<T>(text, params);
+    await beginScoped(client, currentScope());
+    const result = await client.query<T>(text, params);
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw err;
   } finally {
     client.release();
   }
@@ -90,12 +107,11 @@ export interface DbContext {
 export async function withTransaction<T>(ctx: DbContext | null, fn: (client: PoolClient) => Promise<T>): Promise<T> {
   const client = await pool.connect();
   try {
-    await client.query('BEGIN');
     const ambient = currentScope();
-    await applyScope(client, {
+    await beginScoped(client, {
       tenantId: ctx?.tenantId ?? ambient.tenantId,
       bypass: ctx?.bypass ?? ambient.bypass,
-    }, true);
+    });
     if (ctx) {
       await client.query(
         `SELECT set_config('app.current_user_id', $1, true),

@@ -158,6 +158,11 @@ export async function reactivate(req: Request, res: Response) {
   return ok(res, await setTenantStatus(dbContext(req), id, 'REACTIVATE'));
 }
 
+export async function reopen(req: Request, res: Response) {
+  const { id } = req.valid.params as z.infer<typeof tenantIdParams>;
+  return ok(res, await setTenantStatus(dbContext(req), id, 'REOPEN', (req.valid.body as z.infer<typeof reviewSchema>).notes));
+}
+
 export async function resendActivationLink(req: Request, res: Response) {
   const { id } = req.valid.params as z.infer<typeof tenantIdParams>;
   await resendActivation(id);

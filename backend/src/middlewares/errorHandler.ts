@@ -17,6 +17,7 @@ const isPgError = (err: unknown): err is PgError =>
 function fromPgError(err: PgError): AppError | null {
   switch (err.code) {
     case '23505':
+      if (err.constraint?.includes('email')) return AppError.conflict('البريد الإلكتروني مستخدم مسبقاً في المنصة — كل بريد لحساب واحد فقط');
       return AppError.conflict(`Duplicate value violates unique constraint (${err.constraint ?? 'unique'})`);
     case '23503':
       return AppError.conflict('Referenced record does not exist or is still in use');
