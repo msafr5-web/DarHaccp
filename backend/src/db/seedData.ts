@@ -259,6 +259,19 @@ export const demoItems = [
   { code: 'ITM-4001', nameAr: 'مكملات غذائية حساسة للحرارة', category: 'مواد حساسة', storage: 'SENSITIVE', unit: 'علبة' },
 ];
 
+/** Balady health register of the demo company — the three records of the establishment's sheet. */
+export const demoHealthRegister = [
+  { serial: 1, branch: 'الفرع الرئيسي - الرياض', license: '7001234567', section: 'المطبخ وتحضير الأغذية', name: 'أحمد محمد علي',
+    id: '1023456789', birth: '1992/05/15', profession: 'طباخ / صانع أطعمة', mobile: '0501234567', exam: '2026-01-10', examStatus: 'سليم (معتمد)',
+    expiry: '2027-01-10', notes: 'تم الإصدار عبر منصة بلدي' },
+  { serial: 2, branch: 'الفرع الرئيسي - الرياض', license: '7001234567', section: 'خدمة العملاء والتقديم', name: 'خالد عبدالله السعيد',
+    id: '2034567891', birth: '1988/10/20', profession: 'مباشر طعام', mobile: '0559876543', exam: '2026-02-01', examStatus: 'بانتظار النتيجة',
+    expiry: '2027-02-01', notes: 'بانتظار ظهور تحاليل البراز' },
+  { serial: 3, branch: 'فرع التحلية', license: '7009876543', section: 'قسم الحلاقة والعناية', name: 'محمد إبراهيم حسن',
+    id: '2456789123', birth: '1995/12/03', profession: 'حلاق رجالي', mobile: '0561122334', exam: '2025-11-15', examStatus: 'سليم (معتمد)',
+    expiry: '2026-11-15', notes: 'يجب التجديد الشهر القادم' },
+];
+
 export const recipes = [
   {
     code: 'SW-KUNAFA', nameAr: 'كنافة بالقشطة', nameEn: 'Kunafa with cream', department: 'SWEETS', shelfLifeHours: 24, storageTempMax: 4,

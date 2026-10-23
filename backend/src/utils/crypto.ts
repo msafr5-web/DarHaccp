@@ -33,6 +33,9 @@ export function decrypt(payload: string): string {
 
 export const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 
+/** Keyed blind index (HMAC-SHA256): equality / uniqueness on encrypted values without storing them in clear. */
+export const blindIndex = (value: string) => createHmac('sha256', getKey()).update(`idx:${value}`).digest('hex');
+
 /**
  * Short-lived signed links for pages opened outside the app (printable labels / data cards),
  * where the browser cannot attach the Authorization header.

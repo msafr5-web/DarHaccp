@@ -4,7 +4,7 @@ import type { Severity } from './haccp.model';
 export type AlertSource =
   | 'CCP_DEVIATION' | 'HEALTH_CERT_EXPIRY' | 'EQUIPMENT_MAINTENANCE'
   | 'INCIDENT' | 'LABEL_EXPIRY' | 'CONTRACTOR_EXPIRY' | 'DOCUMENT_REVIEW' | 'MISSED_MONITORING'
-  | 'MONITORING_OVERDUE' | 'STOCK_EXPIRY';
+  | 'MONITORING_OVERDUE' | 'STOCK_EXPIRY' | 'HEALTH_REGISTER';
 export type AlertStatus = 'OPEN' | 'ACKNOWLEDGED' | 'RESOLVED';
 
 export interface Alert {

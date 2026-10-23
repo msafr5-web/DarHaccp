@@ -4,6 +4,7 @@ import { logger } from '../config/logger';
 import { Alert, AlertSource, insertAlert, NewAlert } from '../models/alert.model';
 import { publishAlert } from './alert.service';
 import { checkMonitoringGaps, STOCK_EXPIRY_SQL } from './monitoring.service';
+import { certStatus, CERT_LABELS } from './healthRegister.service';
 
 // Arbitrary constant: only one API instance runs the checks at a time (pg advisory lock).
 const SCHEDULER_LOCK_ID = 774_201;
@@ -176,6 +177,29 @@ async function runChecks(): Promise<{ created: number }> {
       message: `${b.item_name} (${b.item_code}) — تشغيلة ${b.batch_number}: الرصيد ${Number(b.quantity)}، `
         + (b.days < 0 ? `انتهت في ${b.expiry_date}` : `تنتهي في ${b.expiry_date} (${b.days} يوم)`),
     })));
+
+    // Balady health register: expired / expiring certificates, pending exam results, unfit workers.
+    const register = await db.query<{ id: string; tenant_id: number; worker_name: string; branch_name: string; profession: string | null;
+      exam_status: 'FIT' | 'PENDING' | 'UNFIT'; cert_expiry: string | null }>(
+      `SELECT id, tenant_id, worker_name, branch_name, profession, exam_status, to_char(cert_expiry, 'YYYY-MM-DD') AS cert_expiry
+         FROM health_register
+        WHERE exam_status <> 'FIT' OR cert_expiry IS NULL OR cert_expiry <= (now() AT TIME ZONE $1)::date + $2::int`,
+      [env.APP_TIMEZONE, env.HEALTH_CERT_WARNING_DAYS],
+    );
+    await sync('HEALTH_REGISTER', register.rows.map((w) => {
+      const { status, days } = certStatus(w.exam_status, w.cert_expiry);
+      const severity = status === 'EXPIRED' || status === 'NOT_FIT' ? 'HIGH' as const
+        : status === 'RENEWAL_REQUIRED' || (days !== null && days <= 7) ? 'MEDIUM' as const : 'LOW' as const;
+      return {
+        tenantId: w.tenant_id, sourceType: 'HEALTH_REGISTER' as const, sourceId: w.id, departmentId: null, severity,
+        title: `شهادة صحية (بلدي): ${CERT_LABELS[status]}`,
+        message: `${w.worker_name}${w.profession ? ` — ${w.profession}` : ''} · ${w.branch_name}: `
+          + (status === 'EXPIRED' ? `انتهت في ${w.cert_expiry} — يُوقف عن العمل حتى التجديد`
+            : status === 'EXPIRING' ? `تنتهي في ${w.cert_expiry} (${days} يوم)`
+            : status === 'NOT_FIT' ? 'نتيجة الفحص: غير لائق'
+            : w.exam_status === 'PENDING' ? 'بانتظار نتيجة الفحص الطبي' : 'لا يوجد تاريخ انتهاء للشهادة'),
+      };
+    }));
 
     await sync('MISSED_MONITORING', missed.rows.map((m) => ({
       tenantId: m.tenant_id, sourceType: 'MISSED_MONITORING' as const, sourceId: m.id, departmentId: m.department_id,

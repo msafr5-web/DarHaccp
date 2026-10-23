@@ -22,6 +22,7 @@ import qrRoutes from './qr.routes';
 import qualityRoutes from './quality.routes';
 import userRoutes from './user.routes';
 import stockRoutes from './stock.routes';
+import healthRegisterRoutes from '../controllers/healthRegister.controller';
 import { companyRoutes, platformRoutes, publicRoutes } from './tenant.routes';
 import { runAsSystem } from '../config/database';
 
@@ -64,6 +65,7 @@ api.use(qualityRoutes);
 api.use(confectioneryRoutes);
 api.use(hseRoutes);
 api.use(stockRoutes);
+api.use(healthRegisterRoutes);
 api.get('/audit-logs', authorize('audit:read'), validate({ query: audit.auditQuery }), audit.list);
 
 export default api;

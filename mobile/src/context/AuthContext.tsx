@@ -63,6 +63,8 @@ const UI_PERMISSIONS = {
   'qr:manage': ['ADMIN', 'HACCP_OFFICER', 'HSE_OFFICER'],
   'iot:manage': ['ADMIN'],
   'item:manage': ['ADMIN', 'HACCP_OFFICER', 'KITCHEN_SUPERVISOR'],
+  'staff:manage': ['ADMIN', 'HACCP_OFFICER', 'HSE_OFFICER'],
+  'staff:view-id': ['ADMIN', 'HSE_OFFICER'],
 } satisfies Record<string, Role[]>;
 
 export type UiPermission = keyof typeof UI_PERMISSIONS;

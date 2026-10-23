@@ -97,6 +97,7 @@ function RootNavigator() {
         <Stack.Screen name="items/index" options={{ title: 'جدول الأصناف الرئيسي' }} />
         <Stack.Screen name="stock/index" options={{ title: 'المخزون والصلاحية (FEFO)' }} />
         <Stack.Screen name="trace/index" options={{ title: 'تتبع التشغيلة (Recall)' }} />
+        <Stack.Screen name="health-register/index" options={{ title: 'سجل الشهادات الصحية (بلدي)' }} />
         <Stack.Screen name="template-options/[id]" options={{ title: 'القوائم المعتمدة' }} />
         <Stack.Screen name="capa/[id]" options={{ title: 'إجراء تصحيحي (CAPA)' }} />
         <Stack.Screen name="incidents/index" options={{ title: 'الحوادث وعدم المطابقة' }} />

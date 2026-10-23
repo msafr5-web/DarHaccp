@@ -7,7 +7,8 @@ import type { FormField } from '../models/haccp.model';
 import { provisionCategory, syncCatalogSeed, upgradeBuiltinForms } from '../services/formCatalog.service';
 import { provisionTenantDefaults } from '../services/provisioning.service';
 import { generateQrToken } from '../services/qr.service';
-import { encrypt } from '../utils/crypto';
+import { blindIndex, encrypt } from '../utils/crypto';
+import { normalizeEntry } from '../services/healthRegister.service';
 import * as data from './seedData';
 
 /** The first customer company (pre-SaaS data) and its demo accounts. */
@@ -87,6 +88,22 @@ async function seed() {
          ON CONFLICT (tenant_id, (UPPER(code))) DO NOTHING`,
         [it.code, it.nameAr, it.category, it.storage, it.unit],
       );
+    }
+
+    const { rows: hasRegister } = await db.query('SELECT 1 FROM health_register LIMIT 1');
+    if (!hasRegister.length) {
+      for (const w of data.demoHealthRegister) {
+        const { value: v } = normalizeEntry({ serial: w.serial, branchName: w.branch, baladyLicenseNo: w.license, internalSection: w.section,
+          workerName: w.name, idNumber: w.id, birthDate: w.birth, profession: w.profession, mobile: w.mobile, examDate: w.exam,
+          examStatus: w.examStatus, certExpiry: w.expiry, notes: w.notes }, { requireId: true });
+        await db.query(
+          `INSERT INTO health_register (serial, branch_name, balady_license_no, internal_section, worker_name, id_number_enc, id_number_hash,
+                                        id_number_last4, id_type, birth_date, profession, mobile, exam_date, exam_status, cert_expiry, notes)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+          [v.serial, v.branch_name, v.balady_license_no, v.internal_section, v.worker_name, encrypt(w.id), blindIndex(w.id), w.id.slice(-4),
+            w.id.startsWith('1') ? 'CITIZEN' : 'RESIDENT', v.birth_date, v.profession, v.mobile, v.exam_date, v.exam_status, v.cert_expiry, v.notes],
+        );
+      }
     }
 
     for (const u of data.users) {
