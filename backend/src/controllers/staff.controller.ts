@@ -103,7 +103,7 @@ export async function create(req: Request, res: Response) {
     const { rows } = await db.query<{ id: string }>(
       `INSERT INTO staff (employee_no, full_name, nationality, id_number_enc, id_number_last4, job_title, department_id,
                           branch_id, user_id, is_food_handler, hire_date, phone)
-       VALUES ($1,$2,$3,$4,$5,$6,$7, COALESCE($8::smallint, (SELECT id FROM branches WHERE code = 'RUH-CK')),$9,$10,$11,$12)
+       VALUES ($1,$2,$3,$4,$5,$6,$7, COALESCE($8::smallint, (SELECT id FROM branches ORDER BY id LIMIT 1)),$9,$10,$11,$12)
        RETURNING id`,
       [b.employeeNo, b.fullName, b.nationality ?? null, b.idNumber ? encrypt(b.idNumber) : null, b.idNumber?.slice(-4) ?? null,
         b.jobTitle ?? null, dept.id, req.user!.branchId, b.userId ?? null, b.isFoodHandler, b.hireDate ?? null, b.phone ?? null],

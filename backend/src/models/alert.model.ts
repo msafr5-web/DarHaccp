@@ -8,6 +8,7 @@ export type AlertStatus = 'OPEN' | 'ACKNOWLEDGED' | 'RESOLVED';
 
 export interface Alert {
   id: string;
+  tenant_id: number;
   source_type: AlertSource;
   source_id: string;
   department_id: number | null;
@@ -24,6 +25,8 @@ export interface Alert {
 }
 
 export interface NewAlert {
+  /** Required when raised from a system (cross-company) scope, e.g. the scheduler. */
+  tenantId?: number;
   sourceType: AlertSource;
   sourceId: string;
   departmentId: number | null;
@@ -35,11 +38,11 @@ export interface NewAlert {
 /** Inserts an alert unless an unresolved one already exists for the same source (idempotent). */
 export async function insertAlert(db: Queryable, a: NewAlert): Promise<Alert | undefined> {
   const { rows } = await db.query<Alert>(
-    `INSERT INTO alerts (source_type, source_id, department_id, severity, title, message)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO alerts (source_type, source_id, department_id, severity, title, message, tenant_id)
+     VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7::int, app_tenant()))
      ON CONFLICT (source_type, source_id) WHERE status <> 'RESOLVED' DO NOTHING
      RETURNING *`,
-    [a.sourceType, a.sourceId, a.departmentId, a.severity, a.title, a.message],
+    [a.sourceType, a.sourceId, a.departmentId, a.severity, a.title, a.message, a.tenantId ?? null],
   );
   return rows[0];
 }

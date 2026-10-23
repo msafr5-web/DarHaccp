@@ -17,6 +17,7 @@ export function dbContext(req: Request): DbContext {
     ip: req.ip,
     userAgent: req.get('user-agent'),
     requestId: req.requestId,
+    tenantId: req.user?.tenantId,
   };
 }
 

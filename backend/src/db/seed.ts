@@ -1,53 +1,78 @@
-import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { pool, withTransaction } from '../config/database';
 import { env } from '../config/env';
 import { logger } from '../config/logger';
 import { CHECKLISTS } from '../services/auditChecklists';
+import { provisionTenantDefaults } from '../services/provisioning.service';
 import { generateQrToken } from '../services/qr.service';
 import { encrypt } from '../utils/crypto';
 import * as data from './seedData';
 
-/** Idempotent seed: reference data + demo accounts (all share the admin password — change them!). */
+/** The first customer company (pre-SaaS data) and its demo accounts. */
+const DEMO_TENANT_ID = 2;
+
+/**
+ * Idempotent seed, run as the API runtime role (Row-Level Security applies):
+ *  1. reference data + the platform (SaaS operator) administrator,
+ *  2. the demo company with its HACCP plan, forms and demo accounts — all scoped to that company.
+ * Demo accounts share SEED_ADMIN_PASSWORD — change them!
+ */
 async function seed() {
   const passwordHash = await bcrypt.hash(env.SEED_ADMIN_PASSWORD, 12);
 
-  await withTransaction(null, async (db) => {
+  await withTransaction({ bypass: true }, async (db) => {
     for (const d of data.departments) {
       await db.query(
         `INSERT INTO departments (code, name_ar, name_en) VALUES ($1, $2, $3) ON CONFLICT (code) DO NOTHING`,
         [d.code, d.nameAr, d.nameEn],
       );
     }
+    await db.query(
+      `INSERT INTO tenants (id, code, name, phone, email, address, subscription_date, status, email_verified_at, reviewed_at, review_notes)
+       VALUES ($1, 'DarAl0000020102026', 'Dar Al Dhiafa — دار الضيافة', '0500000000', LOWER($2), 'الرياض، المملكة العربية السعودية',
+               DATE '2026-10-20', 'ACTIVE', now(), now(), 'حساب تجريبي')
+       ON CONFLICT (id) DO NOTHING`,
+      [DEMO_TENANT_ID, env.SEED_ADMIN_EMAIL],
+    );
+    await db.query(`SELECT setval(pg_get_serial_sequence('tenants', 'id'), GREATEST((SELECT max(id) FROM tenants), 2))`);
+  });
+
+  // SaaS operator: reviews and approves companies (lives in the platform tenant #1).
+  // It has its own password — never the shared demo password.
+  if (env.PLATFORM_ADMIN_PASSWORD) {
+    const platformHash = await bcrypt.hash(env.PLATFORM_ADMIN_PASSWORD, 12);
+    await withTransaction({ tenantId: 1 }, (db) =>
+      db.query(
+        `INSERT INTO users (employee_no, full_name, email, password_hash, role)
+         VALUES ('PLT-001', 'مدير منصة DarHaccp', LOWER($1), $2, 'PLATFORM_ADMIN')
+         ON CONFLICT (tenant_id, employee_no) DO NOTHING`,
+        [env.PLATFORM_ADMIN_EMAIL, platformHash],
+      ),
+    );
+  } else {
+    logger.warn('PLATFORM_ADMIN_PASSWORD not set — platform administrator not created');
+  }
+
+  await withTransaction({ tenantId: DEMO_TENANT_ID }, async (db) => {
     const deptId = async (code: string | null) =>
       code ? (await db.query<{ id: number }>('SELECT id FROM departments WHERE code = $1', [code])).rows[0]!.id : null;
 
+    await provisionTenantDefaults(db);
+    for (const [code, hazardType] of Object.entries(data.ccpHazardTypes)) {
+      await db.query('UPDATE ccps SET hazard_type = $2 WHERE code = $1 AND hazard_type IS DISTINCT FROM $2::hazard_type', [code, hazardType]);
+    }
+
     await db.query(
-      `INSERT INTO users (employee_no, full_name, email, password_hash, role)
-       VALUES ('DD-0001', 'مدير النظام', LOWER($1), $2, 'ADMIN') ON CONFLICT (employee_no) DO NOTHING`,
+      `INSERT INTO users (employee_no, full_name, email, password_hash, role, branch_id)
+       VALUES ('DD-0001', 'مدير النظام', LOWER($1), $2, 'ADMIN', (SELECT id FROM branches ORDER BY id LIMIT 1))
+       ON CONFLICT (tenant_id, employee_no) DO NOTHING`,
       [env.SEED_ADMIN_EMAIL, passwordHash],
     );
     for (const u of data.users) {
       await db.query(
-        `INSERT INTO users (employee_no, full_name, email, password_hash, role, department_id)
-         VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (employee_no) DO NOTHING`,
+        `INSERT INTO users (employee_no, full_name, email, password_hash, role, department_id, branch_id)
+         VALUES ($1, $2, $3, $4, $5, $6, (SELECT id FROM branches ORDER BY id LIMIT 1)) ON CONFLICT (tenant_id, employee_no) DO NOTHING`,
         [u.employeeNo, u.fullName, u.email, passwordHash, u.role, await deptId(u.department)],
-      );
-    }
-
-    for (const c of data.ccps) {
-      await db.query(
-        `INSERT INTO ccps (code, name_ar, name_en, department_id, hazard, unit, min_value, max_value, monitoring_frequency, corrective_action)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT (code) DO NOTHING`,
-        [c.code, c.nameAr, c.nameEn, await deptId(c.department), c.hazard, c.unit, c.min, c.max, c.frequency, c.action],
-      );
-    }
-
-    for (const t of data.templates) {
-      await db.query(
-        `INSERT INTO form_templates (code, title_ar, title_en, department_id, ccp_id, fields, qr_token)
-         VALUES ($1, $2, $3, $4, (SELECT id FROM ccps WHERE code = $5), $6, $7) ON CONFLICT (code) DO NOTHING`,
-        [t.code, t.titleAr, t.titleEn, await deptId(t.department), t.ccp, JSON.stringify(t.fields), generateQrToken()],
       );
     }
 
@@ -57,29 +82,17 @@ async function seed() {
                                 maintenance_interval_days, last_maintenance_date, next_maintenance_date)
          VALUES ($1, $2, $3, $4, $5, (SELECT id FROM form_templates WHERE code = $6), $7, $8,
                  CURRENT_DATE - 60, CURRENT_DATE - 60 + $8::int)
-         ON CONFLICT (code) DO NOTHING`,
+         ON CONFLICT (tenant_id, code) DO NOTHING`,
         [e.code, e.name, e.type, await deptId(e.department), e.location, e.template, generateQrToken(), e.interval],
       );
     }
 
-    for (const [code, hazardType] of Object.entries(data.ccpHazardTypes)) {
-      await db.query('UPDATE ccps SET hazard_type = $2 WHERE code = $1 AND hazard_type IS DISTINCT FROM $2::hazard_type', [code, hazardType]);
-    }
-
-    // Service account that IoT probe readings are recorded under. Inactive: it can never sign in.
-    await db.query(
-      `INSERT INTO users (employee_no, full_name, email, password_hash, role, is_active)
-       VALUES ('SYS-IOT', 'مجسات إنترنت الأشياء (نظام)', 'iot-system@daraldhiafa.sa', $1, 'HACCP_OFFICER', FALSE)
-       ON CONFLICT (employee_no) DO NOTHING`,
-      [await bcrypt.hash(randomBytes(32).toString('hex'), 12)],
-    );
-
     for (const s of data.staff) {
       await db.query(
         `INSERT INTO staff (employee_no, full_name, nationality, id_number_enc, id_number_last4, job_title, department_id, branch_id, user_id)
-         VALUES ($1::varchar, $2, $3, $4, $5, $6, $7, (SELECT id FROM branches WHERE code = 'RUH-CK'),
+         VALUES ($1::varchar, $2, $3, $4, $5, $6, $7, (SELECT id FROM branches ORDER BY id LIMIT 1),
                  (SELECT id FROM users WHERE employee_no = $1::varchar))
-         ON CONFLICT (employee_no) DO UPDATE SET
+         ON CONFLICT (tenant_id, employee_no) DO UPDATE SET
            nationality = COALESCE(staff.nationality, EXCLUDED.nationality),
            id_number_enc = COALESCE(staff.id_number_enc, EXCLUDED.id_number_enc),
            id_number_last4 = COALESCE(staff.id_number_last4, EXCLUDED.id_number_last4),
@@ -92,7 +105,7 @@ async function seed() {
       await db.query(
         `INSERT INTO recipes (code, name_ar, name_en, department_id, ingredients, allergens, shelf_life_hours, storage_temp_max,
                               storage_instructions, ccp_notes)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT (code) DO NOTHING`,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT (tenant_id, code) DO NOTHING`,
         [r.code, r.nameAr, r.nameEn, await deptId(r.department), JSON.stringify(r.ingredients), r.allergens, r.shelfLifeHours,
           r.storageTempMax, r.storage, r.ccp],
       );
@@ -120,7 +133,7 @@ async function seed() {
       await db.query(
         `INSERT INTO documents (doc_no, title, category, department_id, effective_date, review_date, owner_id)
          VALUES ($1, $2, $3, $4, CURRENT_DATE - 30, CURRENT_DATE + $5::int, (SELECT id FROM users WHERE employee_no = 'DD-1001'))
-         ON CONFLICT (doc_no) DO NOTHING`,
+         ON CONFLICT (tenant_id, doc_no) DO NOTHING`,
         [d.docNo, d.title, d.category, await deptId(d.department), d.reviewDays],
       );
     }
@@ -131,7 +144,7 @@ async function seed() {
         const checklist = CHECKLISTS[standard];
         await db.query(
           `INSERT INTO internal_audits (title, standard, department_id, branch_id, auditor_id, scheduled_date, items, created_by)
-           VALUES ($1, $2, $3, (SELECT id FROM branches WHERE code = 'RUH-CK'), (SELECT id FROM users WHERE employee_no = 'DD-1001'),
+           VALUES ($1, $2, $3, (SELECT id FROM branches ORDER BY id LIMIT 1), (SELECT id FROM users WHERE employee_no = 'DD-1001'),
                    CURRENT_DATE + $4::int, $5, (SELECT id FROM users WHERE employee_no = 'DD-1001'))`,
           [checklist.titleAr, standard, await deptId(dept), days,
             JSON.stringify(checklist.items.map((it) => ({ ...it, compliant: null, note: null })))],
@@ -153,7 +166,7 @@ async function seed() {
                                           user_id, staff_id)
          VALUES ($1::varchar, $2, $3, $4, CURRENT_DATE + $5::int - 365, CURRENT_DATE + $5::int,
                  (SELECT id FROM users WHERE employee_no = $1::varchar), (SELECT id FROM staff WHERE employee_no = $1::varchar))
-         ON CONFLICT (certificate_no) DO NOTHING`,
+         ON CONFLICT (tenant_id, certificate_no) DO NOTHING`,
         [no, name, await deptId(dept), certNo, days],
       );
     }

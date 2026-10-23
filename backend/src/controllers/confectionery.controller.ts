@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
-import { query, withTransaction } from '../config/database';
+import { query, runAsSystem, withTransaction } from '../config/database';
 import { env } from '../config/env';
 import { findDepartmentByCode } from '../models/department.model';
 import { canAccessDepartment } from '../middlewares/auth';
@@ -170,7 +170,7 @@ export async function createLabel(req: Request, res: Response) {
       `INSERT INTO product_labels (recipe_id, product_name, ingredients, allergens, storage_temp_max, batch_no, quantity, unit,
                                    produced_at, expires_at, department_id, branch_id, produced_by, qr_token)
        VALUES ($1,$2,$3,$4,$5,$6,$7,COALESCE($8,'قطعة'),$9,$10,$11,
-               COALESCE($12::smallint, (SELECT id FROM branches WHERE code = 'RUH-CK')),$13,$14)
+               COALESCE($12::smallint, (SELECT id FROM branches ORDER BY id LIMIT 1)),$13,$14)
        RETURNING id`,
       [recipe.id, recipe.name_ar, JSON.stringify(recipe.ingredients), recipe.allergens, recipe.storage_temp_max, b.batchNo,
         b.quantity, b.unit ?? null, producedAt, expiresAt, recipe.department_id, user.branchId, user.id, generateQrToken()],
@@ -214,7 +214,7 @@ export async function printLabel(req: Request, res: Response) {
   if (!verifySignedPath(printPath(id), req.query.exp as string | undefined, req.query.sig as string | undefined)) {
     throw new AppError(403, 'LINK_EXPIRED', 'This print link is invalid or has expired');
   }
-  const l = (await loadLabel(null, id)) as unknown as {
+  const l = (await runAsSystem(() => loadLabel(null, id))) as unknown as {
     label_no: string; product_name: string; batch_no: string; quantity: number; unit: string; produced_at: string; expires_at: string;
     ingredients: { name: string; quantity?: number; unit?: string }[]; allergens: string[]; storage_temp_max: number | null;
     produced_by_name: string; qr_token: string; status: string; state: string;

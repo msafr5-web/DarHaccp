@@ -1,5 +1,9 @@
+/** Roles inside a company (tenant). ADMIN = the company's own administrator. */
 export const ROLES = ['ADMIN', 'HACCP_OFFICER', 'HSE_OFFICER', 'KITCHEN_SUPERVISOR', 'CHEF'] as const;
-export type Role = (typeof ROLES)[number];
+export type CompanyRole = (typeof ROLES)[number];
+/** SaaS operator role: manages companies, never sees their operational data. */
+export const PLATFORM_ROLE = 'PLATFORM_ADMIN' as const;
+export type Role = CompanyRole | typeof PLATFORM_ROLE;
 
 export const DEPARTMENTS = ['HOT', 'COLD', 'SWEETS', 'SUPPORT'] as const;
 export type DepartmentCode = (typeof DEPARTMENTS)[number];

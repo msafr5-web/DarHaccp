@@ -1,4 +1,4 @@
-import { Stack } from 'expo-router';
+import { router, Stack, useSegments } from 'expo-router';
 import { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { I18nManager, Platform } from 'react-native';
@@ -34,7 +34,17 @@ function OutboxSync() {
 }
 
 function RootNavigator() {
-  const { user, loading } = useAuth();
+  const { user, loading, isPlatform } = useAuth();
+  const segments = useSegments();
+
+  // Platform administrators live in the platform console; company users never see it.
+  useEffect(() => {
+    if (loading || !user) return;
+    const inPlatform = segments[0] === 'platform';
+    if (isPlatform && !inPlatform) router.replace('/platform');
+    else if (!isPlatform && inPlatform) router.replace('/');
+  }, [loading, user, isPlatform, segments]);
+
   if (loading) return <Loading />;
 
   return (
@@ -46,10 +56,22 @@ function RootNavigator() {
         contentStyle: { backgroundColor: colors.background },
       }}
     >
+      {/* Public: sign-in, company registration, activation & password reset links from e-mails. */}
       <Stack.Protected guard={!user}>
         <Stack.Screen name="login" options={{ headerShown: false }} />
       </Stack.Protected>
-      <Stack.Protected guard={!!user}>
+      <Stack.Screen name="register" options={{ headerShown: false }} />
+      <Stack.Screen name="activate" options={{ headerShown: false }} />
+      <Stack.Screen name="forgot" options={{ headerShown: false }} />
+
+      <Stack.Protected guard={!!user && isPlatform}>
+        <Stack.Screen name="platform/index" options={{ title: 'إدارة المنصة' }} />
+        <Stack.Screen name="platform/[id]" options={{ title: 'مراجعة الشركة' }} />
+        <Stack.Screen name="platform/attempts" options={{ title: 'محاولات الدخول' }} />
+      </Stack.Protected>
+
+      <Stack.Protected guard={!!user && !isPlatform}>
+        <Stack.Screen name="security" options={{ title: 'سجل محاولات الدخول' }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="form" options={{ title: 'نموذج رقمي' }} />
         <Stack.Screen name="capa/[id]" options={{ title: 'إجراء تصحيحي (CAPA)' }} />

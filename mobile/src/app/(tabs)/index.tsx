@@ -57,6 +57,12 @@ export default function HomeScreen() {
         <Text style={styles.muted}>
           {roleLabel[user?.role ?? '']} {user?.department_code ? `· ${departmentLabel[user.department_code]}` : '· جميع الأقسام'}
         </Text>
+        {user?.tenant ? (
+          <View style={{ marginTop: 10, padding: 10, borderRadius: 10, backgroundColor: colors.primaryLight }}>
+            <Text style={[styles.body, { fontWeight: '700' }]}>🏢 {user.tenant.name}</Text>
+            <Text style={styles.muted} selectable>رمز الشركة: {user.tenant.code} · الرقم التعريفي: {user.tenant.account_no}</Text>
+          </View>
+        ) : null}
       </Card>
 
       <InstallPrompt solid />

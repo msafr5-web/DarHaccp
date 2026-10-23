@@ -57,3 +57,11 @@ export const DOCUMENT_CATEGORIES: Record<string, string> = {
   CERTIFICATE: 'شهادة',
   OTHER: 'أخرى',
 };
+
+export const TENANT_STATUS = {
+  PENDING_REVIEW: { label: 'بانتظار المراجعة', color: colors.warning },
+  PENDING_VERIFICATION: { label: 'بانتظار تأكيد البريد', color: colors.muted },
+  ACTIVE: { label: 'نشطة', color: colors.success },
+  SUSPENDED: { label: 'موقوفة', color: colors.danger },
+  REJECTED: { label: 'مرفوضة', color: '#7A271A' },
+} as const;

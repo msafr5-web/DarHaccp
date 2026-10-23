@@ -1,4 +1,4 @@
-import { pool, withTransaction } from '../config/database';
+import { pool, runAsSystem, withTransaction } from '../config/database';
 import { env } from '../config/env';
 import { logger } from '../config/logger';
 import { Alert, AlertSource, insertAlert, NewAlert } from '../models/alert.model';
@@ -15,6 +15,11 @@ const SCHEDULER_LOCK_ID = 774_201;
  * cause disappeared (certificate renewed, maintenance done) are auto-resolved.
  */
 export async function runComplianceChecks(): Promise<{ created: number }> {
+  // Cross-company job: runs in the system scope; every alert carries its company explicitly.
+  return runAsSystem(runChecks);
+}
+
+async function runChecks(): Promise<{ created: number }> {
   const lockClient = await pool.connect();
   try {
     const { rows: lock } = await lockClient.query<{ locked: boolean }>('SELECT pg_try_advisory_lock($1) AS locked', [SCHEDULER_LOCK_ID]);
@@ -25,17 +30,18 @@ export async function runComplianceChecks(): Promise<{ created: number }> {
         const out: Alert[] = [];
 
         // Only the latest certificate of each employee matters (older ones were renewed).
-        const certs = await db.query<{ id: string; employee_name: string; employee_no: string; department_id: number; expiry_date: string; days: number }>(
+        const certs = await db.query<{ id: string; tenant_id: number; employee_name: string; employee_no: string; department_id: number; expiry_date: string; days: number }>(
           `SELECT * FROM (
-              SELECT DISTINCT ON (employee_no) id, employee_name, employee_no, department_id, expiry_date,
+              SELECT DISTINCT ON (tenant_id, employee_no) id, tenant_id, employee_name, employee_no, department_id, expiry_date,
                      (expiry_date - (now() AT TIME ZONE $2)::date) AS days
-                FROM health_certificates ORDER BY employee_no, expiry_date DESC
+                FROM health_certificates ORDER BY tenant_id, employee_no, expiry_date DESC
            ) latest WHERE days <= $1`,
           [env.HEALTH_CERT_WARNING_DAYS, env.APP_TIMEZONE],
         );
         for (const c of certs.rows) {
           const expired = c.days < 0;
           const alert = await insertAlert(db, {
+            tenantId: c.tenant_id,
             sourceType: 'HEALTH_CERT_EXPIRY',
             sourceId: c.id,
             departmentId: c.department_id,
@@ -53,8 +59,8 @@ export async function runComplianceChecks(): Promise<{ created: number }> {
           [certs.rows.map((c) => c.id)],
         );
 
-        const equipment = await db.query<{ id: string; code: string; name: string; department_id: number; next_maintenance_date: string; days: number }>(
-          `SELECT id, code, name, department_id, next_maintenance_date,
+        const equipment = await db.query<{ id: string; tenant_id: number; code: string; name: string; department_id: number; next_maintenance_date: string; days: number }>(
+          `SELECT id, tenant_id, code, name, department_id, next_maintenance_date,
                   (next_maintenance_date - (now() AT TIME ZONE $1)::date) AS days
              FROM equipment
             WHERE is_active AND next_maintenance_date IS NOT NULL
@@ -64,6 +70,7 @@ export async function runComplianceChecks(): Promise<{ created: number }> {
         for (const e of equipment.rows) {
           const overdue = e.days < 0;
           const alert = await insertAlert(db, {
+            tenantId: e.tenant_id,
             sourceType: 'EQUIPMENT_MAINTENANCE',
             sourceId: e.id,
             departmentId: e.department_id,
@@ -93,18 +100,18 @@ export async function runComplianceChecks(): Promise<{ created: number }> {
         };
 
         // Expired products still marked ACTIVE must be discarded (PRD §4.4 data cards).
-        const labels = await db.query<{ id: string; label_no: string; product_name: string; batch_no: string; department_id: number }>(
-          `SELECT id, label_no, product_name, batch_no, department_id FROM product_labels WHERE status = 'ACTIVE' AND expires_at <= now()`,
+        const labels = await db.query<{ id: string; tenant_id: number; label_no: string; product_name: string; batch_no: string; department_id: number }>(
+          `SELECT id, tenant_id, label_no, product_name, batch_no, department_id FROM product_labels WHERE status = 'ACTIVE' AND expires_at <= now()`,
         );
         await sync('LABEL_EXPIRY', labels.rows.map((l) => ({
-          sourceType: 'LABEL_EXPIRY' as const, sourceId: l.id, departmentId: l.department_id, severity: 'HIGH' as const,
+          tenantId: l.tenant_id, sourceType: 'LABEL_EXPIRY' as const, sourceId: l.id, departmentId: l.department_id, severity: 'HIGH' as const,
           title: 'منتج منتهي الصلاحية — يجب إتلافه',
           message: `${l.product_name} (دفعة ${l.batch_no}، بطاقة ${l.label_no}) انتهت صلاحيته ولم يُسجَّل إتلافه`,
         })));
 
         // Contractors whose licence or contract expires within 30 days.
-        const contractors = await db.query<{ id: string; name: string; expiry: string; expired: boolean }>(
-          `SELECT id, name, LEAST(COALESCE(license_expiry, contract_end), COALESCE(contract_end, license_expiry)) AS expiry,
+        const contractors = await db.query<{ id: string; tenant_id: number; name: string; expiry: string; expired: boolean }>(
+          `SELECT id, tenant_id, name, LEAST(COALESCE(license_expiry, contract_end), COALESCE(contract_end, license_expiry)) AS expiry,
                   LEAST(COALESCE(license_expiry, contract_end), COALESCE(contract_end, license_expiry)) < (now() AT TIME ZONE $1)::date AS expired
              FROM contractors
             WHERE is_approved
@@ -113,20 +120,20 @@ export async function runComplianceChecks(): Promise<{ created: number }> {
         );
         const supportDept = await db.query<{ id: number }>(`SELECT id FROM departments WHERE code = 'SUPPORT'`);
         await sync('CONTRACTOR_EXPIRY', contractors.rows.map((c) => ({
-          sourceType: 'CONTRACTOR_EXPIRY' as const, sourceId: c.id, departmentId: supportDept.rows[0]?.id ?? null,
+          tenantId: c.tenant_id, sourceType: 'CONTRACTOR_EXPIRY' as const, sourceId: c.id, departmentId: supportDept.rows[0]?.id ?? null,
           severity: c.expired ? ('HIGH' as const) : ('MEDIUM' as const),
           title: c.expired ? 'ترخيص/عقد مقاول منتهٍ' : 'ترخيص/عقد مقاول قارب على الانتهاء',
           message: `${c.name}: ${c.expired ? 'انتهى في' : 'ينتهي في'} ${c.expiry}`,
         })));
 
         // Controlled documents (IMS policies, evacuation plans…) past their review date.
-        const docs = await db.query<{ id: string; doc_no: string; title: string; department_id: number | null; review_date: string }>(
-          `SELECT id, doc_no, title, department_id, review_date FROM documents
+        const docs = await db.query<{ id: string; tenant_id: number; doc_no: string; title: string; department_id: number | null; review_date: string }>(
+          `SELECT id, tenant_id, doc_no, title, department_id, review_date FROM documents
             WHERE is_active AND review_date IS NOT NULL AND review_date <= (now() AT TIME ZONE $1)::date`,
           [env.APP_TIMEZONE],
         );
         await sync('DOCUMENT_REVIEW', docs.rows.map((d) => ({
-          sourceType: 'DOCUMENT_REVIEW' as const, sourceId: d.id, departmentId: d.department_id, severity: 'LOW' as const,
+          tenantId: d.tenant_id, sourceType: 'DOCUMENT_REVIEW' as const, sourceId: d.id, departmentId: d.department_id, severity: 'LOW' as const,
           title: 'وثيقة تحتاج مراجعة', message: `${d.doc_no} — ${d.title}: موعد المراجعة ${d.review_date}`,
         })));
         return out;

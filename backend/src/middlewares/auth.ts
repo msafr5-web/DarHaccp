@@ -1,8 +1,9 @@
 import { timingSafeEqual } from 'node:crypto';
 import type { NextFunction, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
+import { runInTenant } from '../config/database';
 import { env } from '../config/env';
-import { DEPARTMENTS, DepartmentCode, hasPermission, Permission, ROLES, Role, CROSS_DEPARTMENT_ROLES } from '../config/permissions';
+import { DEPARTMENTS, DepartmentCode, hasPermission, Permission, PLATFORM_ROLE, ROLES, Role, CROSS_DEPARTMENT_ROLES } from '../config/permissions';
 import { findActiveUserForAuth } from '../models/user.model';
 import { findDepartmentByCode } from '../models/department.model';
 import { AppError } from '../utils/AppError';
@@ -10,11 +11,13 @@ import { AppError } from '../utils/AppError';
 interface TokenPayload {
   sub: string;
   role: Role;
+  /** Tenant (company) id. */
+  tid: number;
   iat: number;
 }
 
-export function signAccessToken(userId: string, role: Role): string {
-  return jwt.sign({ role }, env.JWT_SECRET, {
+export function signAccessToken(userId: string, role: Role, tenantId: number): string {
+  return jwt.sign({ role, tid: tenantId }, env.JWT_SECRET, {
     subject: userId,
     issuer: env.JWT_ISSUER,
     algorithm: 'HS256',
@@ -41,22 +44,41 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
     throw new AppError(401, expired ? 'TOKEN_EXPIRED' : 'INVALID_TOKEN', expired ? 'Session expired, please sign in again' : 'Invalid token');
   }
 
-  const user = await findActiveUserForAuth(payload.sub);
-  if (!user || !ROLES.includes(user.role)) throw AppError.unauthorized('Account is disabled or no longer exists');
+  if (!Number.isInteger(payload.tid)) throw new AppError(401, 'INVALID_TOKEN', 'Session expired, please sign in again');
 
-  // Tokens issued before the last password change are revoked.
-  if (Math.floor(new Date(user.password_changed_at).getTime() / 1000) > payload.iat) {
-    throw new AppError(401, 'INVALID_TOKEN', 'Session revoked, please sign in again');
-  }
+  // Everything below — including all downstream handlers — runs confined to this company.
+  return runInTenant(payload.tid, async () => {
+    const user = await findActiveUserForAuth(payload.sub);
+    if (!user || !(ROLES.includes(user.role as never) || user.role === PLATFORM_ROLE)) {
+      throw AppError.unauthorized('Account is disabled or no longer exists');
+    }
+    if (user.tenant_status !== 'ACTIVE') {
+      throw new AppError(403, 'TENANT_SUSPENDED', 'حساب الشركة غير نشط — تواصل مع إدارة المنصة');
+    }
 
-  req.user = {
-    id: user.id,
-    role: user.role,
-    departmentId: user.department_id,
-    departmentCode: user.department_code,
-    branchId: user.branch_id,
-    fullName: user.full_name,
-  };
+    // Tokens issued before the last password change are revoked.
+    if (Math.floor(new Date(user.password_changed_at).getTime() / 1000) > payload.iat) {
+      throw new AppError(401, 'INVALID_TOKEN', 'Session revoked, please sign in again');
+    }
+
+    req.user = {
+      id: user.id,
+      role: user.role,
+      departmentId: user.department_id,
+      departmentCode: user.department_code,
+      branchId: user.branch_id,
+      fullName: user.full_name,
+      tenantId: payload.tid,
+      tenantCode: user.tenant_code,
+      tenantName: user.tenant_name,
+    };
+    next();
+  });
+}
+
+/** SaaS operator endpoints. */
+export function authorizePlatform(req: Request, _res: Response, next: NextFunction) {
+  if (req.user?.role !== PLATFORM_ROLE) throw AppError.forbidden();
   next();
 }
 

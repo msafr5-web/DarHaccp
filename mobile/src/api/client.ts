@@ -82,7 +82,7 @@ export function errorMessage(e: unknown): string {
   if (e instanceof ApiError) {
     if (e.details?.length) return e.details.map((d) => d.message).join('\n');
     const ar: Record<string, string> = {
-      INVALID_CREDENTIALS: 'البريد الإلكتروني أو كلمة المرور غير صحيحة',
+      INVALID_CREDENTIALS: 'رمز الشركة أو البريد أو كلمة المرور غير صحيحة',
       ACCOUNT_LOCKED: 'تم قفل الحساب مؤقتاً بسبب محاولات دخول فاشلة',
       FORBIDDEN: 'ليست لديك صلاحية لهذا الإجراء',
       TOO_MANY_REQUESTS: 'طلبات كثيرة، حاول لاحقاً',

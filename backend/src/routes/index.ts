@@ -20,14 +20,18 @@ import kitchenRoutes from './kitchen.routes';
 import qrRoutes from './qr.routes';
 import qualityRoutes from './quality.routes';
 import userRoutes from './user.routes';
+import { companyRoutes, platformRoutes, publicRoutes } from './tenant.routes';
+import { runAsSystem } from '../config/database';
 
 const api = Router();
 
 api.use('/auth', authRoutes);
+// Company self-registration (SaaS sign-up).
+api.use('/public', publicRoutes);
 
 // Serverless deployments have no long-running scheduler: Vercel Cron calls this daily.
 api.get('/internal/cron/compliance', authorizeCron, async (_req, res) => {
-  ok(res, await runComplianceChecks());
+  ok(res, await runAsSystem(() => runComplianceChecks()));
 });
 
 // Smart probes authenticate with their own device key (X-Device-Key), not a user session.
@@ -37,6 +41,8 @@ api.get('/labels/:id/print', sweets.printLabel);
 
 // Everything below requires a valid JWT.
 api.use(authenticate);
+api.use('/platform', platformRoutes);
+api.use(companyRoutes);
 api.get('/departments', users.getDepartments);
 api.use('/users', userRoutes);
 api.use('/haccp', haccpRoutes);

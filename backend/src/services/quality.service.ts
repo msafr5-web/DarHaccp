@@ -36,7 +36,7 @@ export async function insertIncidentWithCapa(db: PoolClient, user: AuthUser, i: 
   const { rows } = await db.query<{ id: string; incident_no: string }>(
     `INSERT INTO incidents (type, severity, department_id, branch_id, title, description, location, occurred_at,
                             reported_by, assigned_to, audit_id)
-     VALUES ($1, $2, $3, COALESCE($4::smallint, (SELECT id FROM branches WHERE code = 'RUH-CK')), $5, $6, $7,
+     VALUES ($1, $2, $3, COALESCE($4::smallint, (SELECT id FROM branches ORDER BY id LIMIT 1)), $5, $6, $7,
              COALESCE($8::timestamptz, now()), $9,
              COALESCE($10::uuid, (SELECT id FROM users WHERE is_active AND role = 'KITCHEN_SUPERVISOR' AND department_id = $3
                                     ORDER BY created_at LIMIT 1)),
@@ -88,7 +88,7 @@ export async function planAudit(
   return withTransaction(ctx, async (db) => {
     const { rows } = await db.query<{ id: string }>(
       `INSERT INTO internal_audits (title, standard, department_id, branch_id, auditor_id, scheduled_date, items, created_by)
-       VALUES ($1, $2, $3, COALESCE($4::smallint, (SELECT id FROM branches WHERE code = 'RUH-CK')), $5, $6, $7, $8)
+       VALUES ($1, $2, $3, COALESCE($4::smallint, (SELECT id FROM branches ORDER BY id LIMIT 1)), $5, $6, $7, $8)
        RETURNING id`,
       [input.title ?? `${checklist.titleAr} — ${dept.name_ar}`, input.standard, dept.id, user.branchId,
         input.auditorId ?? user.id, input.scheduledDate, JSON.stringify(items), user.id],

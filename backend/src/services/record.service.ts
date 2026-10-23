@@ -1,4 +1,4 @@
-import { DbContext, pool, withTransaction } from '../config/database';
+import { DbContext, query, withTransaction } from '../config/database';
 import { env } from '../config/env';
 import { Alert, insertAlert } from '../models/alert.model';
 import { Equipment, findEquipment } from '../models/equipment.model';
@@ -29,7 +29,7 @@ const MAX_BACKDATE_MS = 24 * 60 * 60 * 1000;
 const MAX_CLOCK_SKEW_MS = 5 * 60 * 1000;
 
 async function findByClientRef(clientRef: string) {
-  const { rows } = await pool.query<{ id: string }>('SELECT id FROM monitoring_records WHERE client_ref = $1', [clientRef]);
+  const { rows } = await query<{ id: string }>('SELECT id FROM monitoring_records WHERE client_ref = $1', [clientRef]);
   return rows[0] ? findRecordById(rows[0].id) : undefined;
 }
 
@@ -85,10 +85,11 @@ export async function submitDeviceReading(equipment: Equipment, value: number, r
   if (!field) throw AppError.unprocessable(`Form ${template.code} has no CCP measurement for sensor readings`);
   const ccp = template.ccp_id ? await findCcpById(template.ccp_id) : null;
 
-  const { rows } = await pool.query<{ id: string }>(`SELECT id FROM users WHERE employee_no = 'SYS-IOT'`);
+  const { rows } = await query<{ id: string }>(`SELECT id FROM users WHERE employee_no = 'SYS-IOT'`);
   if (!rows[0]) throw new AppError(500, 'IOT_USER_MISSING', 'IoT system account is not provisioned (run the seed)');
   const device: AuthUser = {
     id: rows[0].id, role: 'HACCP_OFFICER', departmentId: null, departmentCode: null, branchId: null, fullName: equipment.code,
+    tenantId: equipment.tenant_id, tenantCode: '', tenantName: '',
   };
 
   const data = { [field.key]: value };
@@ -116,7 +117,7 @@ async function persistRecord(
 ) {
   const recordedAt = resolveRecordedAt(input.recordedAt);
   const result = evaluate(template.fields, data, ccp);
-  const { rows: deptRows } = await pool.query<{ code: string }>('SELECT code FROM departments WHERE id = $1', [departmentId]);
+  const { rows: deptRows } = await query<{ code: string }>('SELECT code FROM departments WHERE id = $1', [departmentId]);
   const departmentCode = deptRows[0]?.code ?? '';
 
   let newAlert: Alert | undefined;
@@ -128,7 +129,7 @@ async function persistRecord(
                 measured_value, unit, data, status, deviations, product_name, batch_no, notes, source, recorded_at,
                 branch_id, corrective_action_taken, client_ref)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
-                 COALESCE($17::smallint, (SELECT id FROM branches WHERE code = 'RUH-CK')), $18, $19)
+                 COALESCE($17::smallint, (SELECT id FROM branches ORDER BY id LIMIT 1)), $18, $19)
          RETURNING id`,
         [
           template.id, template.version, ccp?.id ?? null, departmentId, equipmentId, user.id,

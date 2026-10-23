@@ -7,6 +7,10 @@ export interface AuthUser {
   departmentCode: DepartmentCode | null;
   branchId: number | null;
   fullName: string;
+  /** Company (tenant) the user belongs to — every query of the request is confined to it. */
+  tenantId: number;
+  tenantCode: string;
+  tenantName: string;
 }
 
 declare global {

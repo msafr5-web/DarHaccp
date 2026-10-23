@@ -1,4 +1,4 @@
-import { pool, query, Queryable } from '../config/database';
+import { db as scopedDb, query, Queryable } from '../config/database';
 
 export type EquipmentStatus = 'OPERATIONAL' | 'UNDER_MAINTENANCE' | 'OUT_OF_SERVICE';
 
@@ -17,6 +17,7 @@ export interface Equipment {
   last_maintenance_date: string | null;
   next_maintenance_date: string | null;
   is_active: boolean;
+  tenant_id: number;
 }
 
 const SELECT_EQUIPMENT = `SELECT e.*, d.code AS department_code FROM equipment e JOIN departments d ON d.id = e.department_id`;
@@ -31,7 +32,7 @@ export async function listEquipment(f: { departmentId?: number | null; status?: 
   return rows;
 }
 
-export async function findEquipment(by: { id?: string; qrToken?: string }, db: Queryable = pool) {
+export async function findEquipment(by: { id?: string; qrToken?: string }, db: Queryable = scopedDb) {
   const [column, value] = by.id ? ['e.id', by.id] : ['e.qr_token', by.qrToken];
   const { rows } = await db.query<Equipment>(`${SELECT_EQUIPMENT} WHERE ${column} = $1`, [value]);
   return rows[0];

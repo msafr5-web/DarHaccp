@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { DbContext, query, withTransaction } from '../config/database';
+import { DbContext, query, runAsSystem, withTransaction } from '../config/database';
 import { env } from '../config/env';
 import { logger } from '../config/logger';
 import { Alert, findAlertById } from '../models/alert.model';
@@ -23,14 +23,14 @@ async function sendPushNotifications(alert: Alert) {
   if (!env.EXPO_PUSH_ENABLED) return;
 
   // Officers always; kitchen supervisors of the affected department; HSE for equipment/health alerts.
-  const { rows } = await query<{ push_token: string }>(
+  const { rows } = await runAsSystem(() => query<{ push_token: string }>(
     `SELECT DISTINCT push_token FROM users
-      WHERE is_active AND push_token IS NOT NULL
+      WHERE is_active AND push_token IS NOT NULL AND tenant_id = $3
         AND ( role IN ('ADMIN', 'HACCP_OFFICER')
            OR (role = 'HSE_OFFICER' AND $2 <> 'CCP_DEVIATION')
            OR (role = 'KITCHEN_SUPERVISOR' AND ($1::smallint IS NULL OR department_id = $1)) )`,
-    [alert.department_id, alert.source_type],
-  );
+    [alert.department_id, alert.source_type, alert.tenant_id],
+  ));
   if (!rows.length) return;
 
   const messages = rows.map((r) => ({

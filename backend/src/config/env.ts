@@ -32,6 +32,26 @@ const schema = z.object({
   HEALTH_CERT_WARNING_DAYS: z.coerce.number().int().positive().default(30),
   SCHEDULER_INTERVAL_MINUTES: z.coerce.number().int().positive().default(60),
   EXPO_PUSH_ENABLED: bool.default(false),
+  /** Database role the API switches to (no BYPASSRLS) so Row-Level Security isolates companies. */
+  DB_APP_ROLE: z.string().regex(/^[a-z_][a-z0-9_]*$/).default('dar_app'),
+
+  /** Public URL of the web app (links in e-mails: activation, password reset). */
+  APP_URL: z.string().url().default('http://localhost:8081'),
+
+  /** E-mail delivery for OTP codes and notifications. `log` = development only (never delivers). */
+  EMAIL_PROVIDER: z.enum(['log', 'smtp', 'resend']).default('log'),
+  EMAIL_FROM: z.string().default('DarHaccp <no-reply@darhaccp.sa>'),
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().int().positive().default(587),
+  SMTP_SECURE: bool.default(false),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  RESEND_API_KEY: z.string().optional(),
+
+  /** Platform (SaaS operator) administrator created by the seed, and recipient of new-registration notices. */
+  PLATFORM_ADMIN_EMAIL: z.string().email().default('platform-admin@darhaccp.sa'),
+  PLATFORM_ADMIN_PASSWORD: z.string().min(12).optional(),
+
   /** 64 hex chars (32 bytes): AES-256-GCM key for sensitive personal data (national ID / iqama). */
   DATA_ENCRYPTION_KEY: z
     .string()

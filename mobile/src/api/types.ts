@@ -1,4 +1,44 @@
-export type Role = 'ADMIN' | 'HACCP_OFFICER' | 'HSE_OFFICER' | 'KITCHEN_SUPERVISOR' | 'CHEF';
+export type Role = 'ADMIN' | 'HACCP_OFFICER' | 'HSE_OFFICER' | 'KITCHEN_SUPERVISOR' | 'CHEF' | 'PLATFORM_ADMIN';
+
+export interface TenantSummary {
+  id: number;
+  account_no: string;
+  code: string;
+  name: string;
+}
+
+export type TenantStatus = 'PENDING_VERIFICATION' | 'PENDING_REVIEW' | 'ACTIVE' | 'REJECTED' | 'SUSPENDED';
+
+export interface TenantDetails extends TenantSummary {
+  phone: string;
+  email: string;
+  address: string;
+  subscription_date: string;
+  status: TenantStatus;
+  email_verified_at: string | null;
+  reviewed_at: string | null;
+  reviewed_by_name: string | null;
+  review_notes: string | null;
+  created_at: string;
+  users_count: number;
+  last_login_at: string | null;
+  records_count: number;
+}
+
+export interface LoginAttempt {
+  id: number;
+  tenant_name: string | null;
+  tenant_code: string | null;
+  company_code: string | null;
+  user_name: string | null;
+  email: string | null;
+  stage: 'PASSWORD' | 'OTP' | 'OTP_RESEND';
+  success: boolean;
+  failure_reason: string | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  occurred_at: string;
+}
 export type Department = 'HOT' | 'COLD' | 'SWEETS' | 'SUPPORT';
 
 export interface User {
@@ -8,6 +48,8 @@ export interface User {
   email: string;
   role: Role;
   department_code: Department | null;
+  is_active?: boolean;
+  tenant?: TenantSummary;
 }
 
 export interface FormField {

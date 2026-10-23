@@ -37,6 +37,12 @@ const SECTIONS: { title: string; links: ModuleLink[] }[] = [
       { icon: '📑', title: 'الوثائق المعتمدة', description: 'سياسات IMS، خطط الإخلاء، مخططات الطفايات', href: '/documents', permission: 'document:read' },
     ],
   },
+  {
+    title: 'حساب الشركة والأمان',
+    links: [
+      { icon: '🔐', title: 'سجل محاولات الدخول', description: 'كل محاولة دخول ناجحة أو فاشلة على حسابات الشركة', href: '/security', permission: 'security:read' },
+    ],
+  },
 ];
 
 export default function ModulesScreen() {

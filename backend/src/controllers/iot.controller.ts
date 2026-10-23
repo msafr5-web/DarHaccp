@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
-import { pool, withTransaction } from '../config/database';
+import { query, runAsSystem, runInTenant, withTransaction } from '../config/database';
 import { findEquipment } from '../models/equipment.model';
 import { submitDeviceReading } from '../services/record.service';
 import { AppError } from '../utils/AppError';
@@ -36,12 +36,16 @@ export async function issueDeviceKey(req: Request, res: Response) {
 export async function ingestReading(req: Request, res: Response) {
   const key = req.get('x-device-key');
   if (!key || !/^dk_[\w-]{40,}$/.test(key)) throw AppError.unauthorized('Missing or malformed device key');
-  const { rows } = await pool.query<{ id: string }>('SELECT id FROM equipment WHERE device_key_hash = $1 AND is_active', [sha256(key)]);
+  const { rows } = await runAsSystem(() =>
+    query<{ id: string; tenant_id: number }>('SELECT id, tenant_id FROM equipment WHERE device_key_hash = $1 AND is_active', [sha256(key)]),
+  );
   if (!rows[0]) throw AppError.unauthorized('Unknown device');
-  const equipment = await findEquipment({ id: rows[0].id });
-  if (!equipment) throw AppError.unauthorized('Unknown device');
-
   const b = req.valid.body as z.infer<typeof readingSchema>;
-  const record = await submitDeviceReading(equipment, b.value, b.recordedAt);
-  return ok(res, { id: record?.id, status: record?.status, deviations: record?.deviations });
+
+  return runInTenant(rows[0].tenant_id, async () => {
+    const equipment = await findEquipment({ id: rows[0]!.id });
+    if (!equipment) throw AppError.unauthorized('Unknown device');
+    const record = await submitDeviceReading(equipment, b.value, b.recordedAt);
+    return ok(res, { id: record?.id, status: record?.status, deviations: record?.deviations });
+  });
 }

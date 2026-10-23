@@ -1,4 +1,4 @@
-import { pool, query, Queryable } from '../config/database';
+import { db as scopedDb, query, Queryable } from '../config/database';
 import type { DepartmentCode, Role } from '../config/permissions';
 
 export interface UserRow {
@@ -20,26 +20,27 @@ const PUBLIC_COLUMNS = `u.id, u.employee_no, u.full_name, u.email, u.phone, u.ro
   d.code AS department_code, u.branch_id, u.is_active, u.last_login_at, u.created_at`;
 
 export async function findActiveUserForAuth(id: string) {
-  const { rows } = await query<UserRow & { password_changed_at: string }>(
-    `SELECT ${PUBLIC_COLUMNS}, u.password_changed_at
-       FROM users u LEFT JOIN departments d ON d.id = u.department_id
+  const { rows } = await query<UserRow & { password_changed_at: string; tenant_status: string; tenant_code: string; tenant_name: string }>(
+    `SELECT ${PUBLIC_COLUMNS}, u.password_changed_at, t.status AS tenant_status, t.code AS tenant_code, t.name AS tenant_name
+       FROM users u LEFT JOIN departments d ON d.id = u.department_id JOIN tenants t ON t.id = u.tenant_id
       WHERE u.id = $1 AND u.is_active`,
     [id],
   );
   return rows[0];
 }
 
-export async function findUserForLogin(email: string) {
+/** Login lookup inside one company (called from a system scope, so the tenant filter is explicit). */
+export async function findUserForLogin(tenantId: number, email: string) {
   const { rows } = await query<UserRow & { password_hash: string; failed_login_attempts: number; locked_until: string | null }>(
     `SELECT ${PUBLIC_COLUMNS}, u.password_hash, u.failed_login_attempts, u.locked_until
        FROM users u LEFT JOIN departments d ON d.id = u.department_id
-      WHERE LOWER(u.email) = LOWER($1)`,
-    [email],
+      WHERE u.tenant_id = $1 AND LOWER(u.email) = LOWER($2)`,
+    [tenantId, email],
   );
   return rows[0];
 }
 
-export async function findUserById(id: string, db: Queryable = pool) {
+export async function findUserById(id: string, db: Queryable = scopedDb) {
   const { rows } = await db.query<UserRow>(
     `SELECT ${PUBLIC_COLUMNS} FROM users u LEFT JOIN departments d ON d.id = u.department_id WHERE u.id = $1`,
     [id],

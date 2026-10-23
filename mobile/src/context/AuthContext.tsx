@@ -5,11 +5,25 @@ import type { Role, User } from '../api/types';
 import { registerForPushNotifications, unregisterPushNotifications } from '../notifications';
 
 const TOKEN_KEY = 'dar_haccp_token';
+const COMPANY_CODE_KEY = 'dar_haccp_company_code';
+
+export interface LoginChallenge {
+  challengeId: string;
+  email: string;
+  expiresInSeconds: number;
+}
 
 interface AuthState {
   user: User | null;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<void>;
+  /** Step 1: company code + e-mail + password → an OTP is e-mailed. */
+  startLogin: (companyCode: string, email: string, password: string) => Promise<LoginChallenge>;
+  /** Step 2: the e-mailed 6-digit code → session. */
+  verifyOtp: (challengeId: string, code: string) => Promise<void>;
+  resendOtp: (challengeId: string) => Promise<{ email: string }>;
+  /** Last company code used on this device (pre-fills the login form). */
+  lastCompanyCode: () => Promise<string | null>;
+  isPlatform: boolean;
   signOut: () => Promise<void>;
   /** Mirrors the backend permission matrix (UI only — the server enforces it). */
   can: (permission: UiPermission) => boolean;
@@ -37,6 +51,7 @@ const UI_PERMISSIONS = {
   'contractor:read': MANAGERS,
   'contractor:manage': ['ADMIN', 'HSE_OFFICER'],
   'document:read': ALL,
+  'security:read': ['ADMIN'],
 } satisfies Record<string, Role[]>;
 
 export type UiPermission = keyof typeof UI_PERMISSIONS;
@@ -71,16 +86,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => setUnauthorizedHandler(null);
   }, [clearSession]);
 
-  const signIn = useCallback(async (email: string, password: string) => {
-    const { token, user: u } = await api<{ token: string; user: User }>('/auth/login', {
+  const startLogin = useCallback(async (companyCode: string, email: string, password: string) => {
+    const challenge = await api<LoginChallenge>('/auth/login', {
       method: 'POST',
-      body: { email: email.trim(), password },
+      body: { companyCode: companyCode.trim(), email: email.trim(), password },
+    });
+    await tokenStorage.set(COMPANY_CODE_KEY, companyCode.trim());
+    return challenge;
+  }, []);
+
+  const verifyOtp = useCallback(async (challengeId: string, code: string) => {
+    const { token, user: u, tenant } = await api<{ token: string; user: User; tenant: User['tenant'] }>('/auth/verify-otp', {
+      method: 'POST',
+      body: { challengeId, code: code.trim() },
     });
     await tokenStorage.set(TOKEN_KEY, token);
     setAuthToken(token);
-    setUser(u);
+    setUser({ ...u, tenant });
     void registerForPushNotifications();
   }, []);
+
+  const resendOtp = useCallback(
+    (challengeId: string) => api<{ email: string }>('/auth/resend-otp', { method: 'POST', body: { challengeId } }),
+    [],
+  );
+  const lastCompanyCode = useCallback(() => tokenStorage.get(COMPANY_CODE_KEY), []);
 
   const signOut = useCallback(async () => {
     await unregisterPushNotifications();
@@ -91,11 +121,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       user,
       loading,
-      signIn,
+      startLogin,
+      verifyOtp,
+      resendOtp,
+      lastCompanyCode,
       signOut,
+      isPlatform: user?.role === 'PLATFORM_ADMIN',
       can: (p) => !!user && (UI_PERMISSIONS[p] as Role[]).includes(user.role),
     }),
-    [user, loading, signIn, signOut],
+    [user, loading, startLogin, verifyOtp, resendOtp, lastCompanyCode, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

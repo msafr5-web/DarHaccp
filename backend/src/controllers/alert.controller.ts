@@ -42,7 +42,8 @@ export function stream(req: Request, res: Response) {
   res.write(`event: ready\ndata: ${JSON.stringify({ userId: user.id })}\n\n`);
 
   const onAlert = (alert: Alert) => {
-    if (canAccessDepartment(user, alert.department_id)) {
+    // The bus is process-wide: only forward the company's own alerts.
+    if (alert.tenant_id === user.tenantId && canAccessDepartment(user, alert.department_id)) {
       res.write(`id: ${alert.id}\nevent: alert\ndata: ${JSON.stringify(alert)}\n\n`);
     }
   };

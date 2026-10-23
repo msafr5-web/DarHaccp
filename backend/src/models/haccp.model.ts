@@ -1,4 +1,4 @@
-import { pool, query, Queryable } from '../config/database';
+import { db as scopedDb, query, Queryable } from '../config/database';
 import type { DepartmentCode } from '../config/permissions';
 
 /** Severity levels shared by CCPs and alerts. */
@@ -70,7 +70,7 @@ export async function listCcps(departmentId?: number) {
   return rows;
 }
 
-export async function findCcpById(id: string, db: Queryable = pool) {
+export async function findCcpById(id: string, db: Queryable = scopedDb) {
   const { rows } = await db.query<Ccp>('SELECT * FROM ccps WHERE id = $1', [id]);
   return rows[0];
 }
@@ -85,7 +85,7 @@ export async function listTemplates(departmentId?: number) {
   return rows;
 }
 
-export async function findTemplate(by: { id?: string; qrToken?: string }, db: Queryable = pool) {
+export async function findTemplate(by: { id?: string; qrToken?: string }, db: Queryable = scopedDb) {
   const [column, value] = by.id ? ['t.id', by.id] : ['t.qr_token', by.qrToken];
   const { rows } = await db.query<FormTemplate>(
     `SELECT ${TEMPLATE_COLUMNS} FROM form_templates t LEFT JOIN departments d ON d.id = t.department_id WHERE ${column} = $1`,
