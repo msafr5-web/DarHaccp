@@ -11,6 +11,7 @@ const SCHEDULER_LOCK_ID = 774_201;
  * Periodic compliance checks:
  *  - health certificates expiring within HEALTH_CERT_WARNING_DAYS (or already expired)
  *  - equipment whose preventive maintenance is due within 7 days (or overdue)
+ *  - forms filled fewer times than their minimum daily frequency the previous day
  * Idempotent: an unresolved alert per source is never duplicated, and alerts whose
  * cause disappeared (certificate renewed, maintenance done) are auto-resolved.
  */
@@ -136,6 +137,36 @@ async function runChecks(): Promise<{ created: number }> {
     await sync('DOCUMENT_REVIEW', docs.rows.map((d) => ({
       tenantId: d.tenant_id, sourceType: 'DOCUMENT_REVIEW' as const, sourceId: d.id, departmentId: d.department_id, severity: 'LOW' as const,
       title: 'وثيقة تحتاج مراجعة', message: `${d.doc_no} — ${d.title}: موعد المراجعة ${d.review_date}`,
+    })));
+
+    // Minimum monitoring frequency (PRD: environmental readings at least twice a day), checked on the
+    // previous day per data logger / equipment linked to the form, or per form when none is linked.
+    const missed = await db.query<{ id: string; tenant_id: number; title_ar: string; department_id: number | null;
+      equipment_code: string | null; required: number; done: number }>(
+      `WITH targets AS (
+         SELECT t.tenant_id, t.id AS template_id, t.title_ar, t.min_daily_entries AS required,
+                e.id AS equipment_id, e.code AS equipment_code, COALESCE(e.department_id, t.department_id) AS department_id
+           FROM form_templates t
+           LEFT JOIN equipment e ON e.form_template_id = t.id AND e.is_active
+                                AND (e.created_at AT TIME ZONE $1)::date < (now() AT TIME ZONE $1)::date - 1
+          WHERE t.is_active AND t.min_daily_entries > 0
+            AND (t.created_at AT TIME ZONE $1)::date < (now() AT TIME ZONE $1)::date - 1
+       )
+       SELECT * FROM (
+         SELECT COALESCE(equipment_id, template_id) AS id, tenant_id, title_ar, department_id, equipment_code, required,
+                (SELECT COUNT(*)::int FROM monitoring_records r
+                  WHERE r.template_id = targets.template_id
+                    AND (targets.equipment_id IS NULL OR r.equipment_id = targets.equipment_id)
+                    AND (r.recorded_at AT TIME ZONE $1)::date = (now() AT TIME ZONE $1)::date - 1) AS done
+           FROM targets
+       ) counted WHERE done < required`,
+      [env.APP_TIMEZONE],
+    );
+    await sync('MISSED_MONITORING', missed.rows.map((m) => ({
+      tenantId: m.tenant_id, sourceType: 'MISSED_MONITORING' as const, sourceId: m.id, departmentId: m.department_id,
+      severity: m.done === 0 ? ('HIGH' as const) : ('MEDIUM' as const),
+      title: 'مراقبة ناقصة — لم يُستوفَ الحد الأدنى من القراءات',
+      message: `${m.title_ar}${m.equipment_code ? ` (${m.equipment_code})` : ''}: ${m.done} من ${m.required} قراءات مطلوبة أمس`,
     })));
     return out;
   });

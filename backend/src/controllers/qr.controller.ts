@@ -80,12 +80,12 @@ export async function labels(req: Request, res: Response) {
   const cards = await Promise.all(
     rows.map(async (r) => {
       const img = await renderQrDataUrl(buildQrPayload(r.token));
-      return `<div class="card"><img src="${img}" alt=""><h3>${escapeHtml(r.title)}</h3><p>${escapeHtml(r.subtitle)}</p><small>امسح الرمز لفتح النموذج الرقمي</small></div>`;
+      return `<div class="card"><img src="${img}" alt=""><h3>${escapeHtml(r.title)}</h3><p>${escapeHtml(r.subtitle)}</p><small>امسح الرمز بكاميرا الجوال لفتح النموذج وتعبئته</small></div>`;
     }),
   );
   res.type('html').send(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>QR Labels</title>
 <style>body{font-family:Tahoma,Arial,sans-serif;margin:16px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
 .card{border:2px solid #0b5d3b;border-radius:10px;padding:10px;text-align:center;break-inside:avoid}
 .card img{width:100%;max-width:200px}h3{margin:6px 0 2px;font-size:15px;color:#0b5d3b}p{margin:0;font-size:12px}small{color:#555}
-@media print{body{margin:0}}</style></head><body><h2>دار الضيافة — ملصقات QR لسلامة الغذاء</h2><div class="grid">${cards.join('')}</div></body></html>`);
+@media print{body{margin:0}}</style></head><body><h2>${escapeHtml(requireUser(req).tenantName)} — ملصقات QR لسلامة الغذاء</h2><div class="grid">${cards.join('')}</div></body></html>`);
 }

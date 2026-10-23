@@ -1,10 +1,10 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, Switch, Text, View } from 'react-native';
 import { api, errorMessage } from '@/api/client';
-import type { TenantDetails } from '@/api/types';
+import type { TenantDetails, TenantForm } from '@/api/types';
 import { Badge, Button, Card, Empty, Input, Loading, styles } from '@/components/ui';
-import { TENANT_STATUS } from '@/constants';
+import { CATEGORY_LABEL, TENANT_STATUS } from '@/constants';
 import { useApi } from '@/hooks/useApi';
 import { colors, textStart } from '@/theme';
 
@@ -84,6 +84,58 @@ function EditDetails({ t, onSaved }: { t: TenantDetails; onSaved: (updated: Tena
   );
 }
 
+/** Library forms ("features") enabled for this company, each with its own QR code. */
+function CompanyForms({ t }: { t: TenantDetails }) {
+  const { data, error, setData } = useApi<TenantForm[]>(`/platform/tenants/${t.id}/forms`);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+
+  if (t.status !== 'ACTIVE') return null;
+  const toggle = async (f: TenantForm) => {
+    setBusy(f.catalog_id);
+    setMessage(null);
+    try {
+      await api(`/platform/tenants/${t.id}/forms/${f.catalog_id}/${f.enabled ? 'disable' : 'enable'}`, { method: 'POST' });
+      setData((data ?? []).map((x) => (x.catalog_id === f.catalog_id ? { ...x, enabled: !f.enabled } : x)));
+    } catch (e) {
+      setMessage(errorMessage(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const enabled = (data ?? []).filter((f) => f.enabled).length;
+  return (
+    <Card>
+      <Text style={styles.title}>النماذج والخصائص المفعّلة ({enabled})</Text>
+      <Text style={[styles.muted, { marginBottom: 8 }]}>فعّل ما تحتاجه الشركة؛ لكل نموذج رمز QR خاص بها. «الحقول» لتخصيص النموذج لهذه الشركة.</Text>
+      {error || message ? <Text style={{ color: colors.danger, marginBottom: 8, textAlign: textStart }}>{error ?? message}</Text> : null}
+      {(data ?? []).map((f, i, all) => (
+        <View key={f.catalog_id}>
+          {i === 0 || all[i - 1]!.category !== f.category ? (
+            <Text style={[styles.label, { marginTop: 10, color: colors.primary }]}>{CATEGORY_LABEL[f.category] ?? f.category}</Text>
+          ) : null}
+          <View style={[styles.row, { justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderColor: '#F2F4F7' }]}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.body, { fontWeight: '700' }, !f.catalog_active && { color: colors.muted }]}>{f.title_ar}</Text>
+              <Text style={[styles.muted, { fontSize: 12 }]}>
+                {f.code}{f.enabled ? ` · v${f.version} · ${f.records_count} سجل` : ''}{f.customized ? ' · مخصص' : ''}
+              </Text>
+            </View>
+            {f.enabled ? (
+              <Pressable onPress={() => router.push({ pathname: '/platform/tenant-form', params: { tenantId: String(t.id), catalogId: f.catalog_id, name: t.name } })}>
+                <Text style={{ color: colors.primary, fontWeight: '700', marginHorizontal: 8 }}>الحقول</Text>
+              </Pressable>
+            ) : null}
+            <Switch value={f.enabled} disabled={busy === f.catalog_id || (!f.enabled && !f.catalog_active)}
+              onValueChange={() => void toggle(f)} trackColor={{ true: colors.primary }} />
+          </View>
+        </View>
+      ))}
+    </Card>
+  );
+}
+
 /** Company review: verify the submitted information, then approve, reject, suspend or reactivate. */
 export default function TenantReviewScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -134,6 +186,7 @@ export default function TenantReviewScreen() {
 
       <EditDetails t={t} onSaved={(u) => setData({ ...t, ...u })} />
       <View style={{ height: 6 }} />
+      <CompanyForms t={t} />
 
       <Card>
         <Text style={styles.title}>قائمة التحقق قبل الاعتماد</Text>

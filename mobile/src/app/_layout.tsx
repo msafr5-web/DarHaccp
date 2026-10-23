@@ -5,6 +5,7 @@ import { I18nManager, Platform } from 'react-native';
 import { Loading } from '@/components/ui';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { flushOutbox } from '@/offline';
+import { takePendingRedirect } from '@/pendingRedirect';
 import { colors } from '@/theme';
 
 // Arabic-first UI: right-to-left layout (applies after the first app restart).
@@ -41,6 +42,12 @@ function RootNavigator() {
   useEffect(() => {
     if (loading || !user) return;
     const inPlatform = segments[0] === 'platform';
+    // A QR code scanned before signing in: open its form now.
+    const pending = !isPlatform ? takePendingRedirect() : null;
+    if (pending && segments[0] !== 'q') {
+      router.replace(pending as never);
+      return;
+    }
     if (isPlatform && !inPlatform) router.replace('/platform');
     else if (!isPlatform && inPlatform) router.replace('/');
   }, [loading, user, isPlatform, segments]);
@@ -66,17 +73,25 @@ function RootNavigator() {
       <Stack.Screen name="login-link" options={{ headerShown: false }} />
       <Stack.Screen name="c/[code]" options={{ headerShown: false }} />
       <Stack.Screen name="magic" options={{ headerShown: false }} />
+      <Stack.Screen name="q/[token]" options={{ title: 'فتح النموذج' }} />
 
       <Stack.Protected guard={!!user && isPlatform}>
         <Stack.Screen name="platform/index" options={{ title: 'إدارة المنصة' }} />
         <Stack.Screen name="platform/[id]" options={{ title: 'مراجعة الشركة' }} />
         <Stack.Screen name="platform/attempts" options={{ title: 'محاولات الدخول' }} />
+        <Stack.Screen name="platform/forms/index" options={{ title: 'مكتبة النماذج' }} />
+        <Stack.Screen name="platform/forms/[id]" options={{ title: 'تحرير النموذج' }} />
+        <Stack.Screen name="platform/tenant-form" options={{ title: 'نموذج الشركة' }} />
       </Stack.Protected>
 
       <Stack.Protected guard={!!user && !isPlatform}>
         <Stack.Screen name="security" options={{ title: 'سجل محاولات الدخول' }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="form" options={{ title: 'نموذج رقمي' }} />
+        <Stack.Screen name="records/index" options={{ title: 'سجلات النماذج' }} />
+        <Stack.Screen name="records/[id]" options={{ title: 'السجل' }} />
+        <Stack.Screen name="users/index" options={{ title: 'الموظفون والصلاحيات' }} />
+        <Stack.Screen name="template-options/[id]" options={{ title: 'القوائم المعتمدة' }} />
         <Stack.Screen name="capa/[id]" options={{ title: 'إجراء تصحيحي (CAPA)' }} />
         <Stack.Screen name="incidents/index" options={{ title: 'الحوادث وعدم المطابقة' }} />
         <Stack.Screen name="incidents/new" options={{ title: 'بلاغ جديد' }} />

@@ -6,6 +6,7 @@ import { Alert, findAlertById } from '../models/alert.model';
 import { AppError } from '../utils/AppError';
 import type { AuthUser } from '../types/express';
 import { canAccessDepartment } from '../middlewares/auth';
+import { emails, sendEmail } from './email.service';
 
 /** In-process bus feeding the Server-Sent Events stream (`GET /api/v1/alerts/stream`). */
 export const alertBus = new EventEmitter();
@@ -17,6 +18,20 @@ const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 export function publishAlert(alert: Alert) {
   alertBus.emit('alert', alert);
   sendPushNotifications(alert).catch((err) => logger.error({ err, alertId: alert.id }, 'Push notification failed'));
+  sendAlertEmails(alert).catch((err) => logger.error({ err, alertId: alert.id }, 'Alert e-mail failed'));
+}
+
+/** PRD: critical CCP deviations are also e-mailed to the company administrator and HACCP officers. */
+async function sendAlertEmails(alert: Alert) {
+  if (alert.source_type !== 'CCP_DEVIATION' || !['CRITICAL', 'HIGH'].includes(alert.severity)) return;
+  const { rows } = await runAsSystem(() => query<{ email: string; company: string }>(
+    `SELECT DISTINCT u.email, t.name AS company FROM users u JOIN tenants t ON t.id = u.tenant_id
+      WHERE u.tenant_id = $1 AND u.is_active AND u.role IN ('ADMIN', 'HACCP_OFFICER')`,
+    [alert.tenant_id],
+  ));
+  for (const r of rows) {
+    await sendEmail(emails.criticalAlert(r.email, r.company, alert.title, alert.message, `${env.APP_URL}/alerts`));
+  }
 }
 
 async function sendPushNotifications(alert: Alert) {

@@ -158,6 +158,17 @@ export const emails = {
       <p style="font-size:13px;color:#b42318">إن لم تطلبوا هذا التغيير فتواصلوا مع إدارة المنصة فوراً.</p>`),
   }),
 
+  criticalAlert: (to: string, company: string, title: string, message: string, url: string): Email => ({
+    to,
+    subject: `⚠ تنبيه فوري: ${title} — ${company}`,
+    text: `${title}
+${message}
+تم فتح إجراء تصحيحي (CAPA) تلقائياً. التفاصيل: ${url}`,
+    html: layout('تنبيه سلامة غذاء فوري', `<p style="color:#b42318;font-weight:700">${esc(title)}</p>
+      <p>${esc(message)}</p><p>تم فتح إجراء تصحيحي (CAPA) تلقائياً وإبلاغ المشرف المختص.</p>
+      ${button(url, 'فتح التنبيهات')}`),
+  }),
+
   suspended: (to: string, name: string, reason: string): Email => ({
     to,
     subject: `تم إيقاف حساب ${name} مؤقتاً — DarHaccp`,

@@ -49,14 +49,49 @@ export interface User {
   role: Role;
   department_code: Department | null;
   is_active?: boolean;
+  /** FILL = fill forms only; FILL_EDIT = fill and amend records. */
+  record_access?: RecordAccess;
+  phone?: string | null;
+  last_login_at?: string | null;
   tenant?: TenantSummary;
 }
+
+export type RecordAccess = 'FILL' | 'FILL_EDIT';
+
+export interface Limits {
+  min?: number;
+  max?: number;
+}
+
+export type FieldCompute =
+  | { kind: 'sum'; terms: { field: string; sign: 1 | -1 }[] }
+  | { kind: 'daysUntil'; field: string }
+  | { kind: 'expiryStatus'; field: string; warnDays: number }
+  | { kind: 'compliance'; fields: string[] };
+
+export type FieldType = 'number' | 'text' | 'boolean' | 'date' | 'select' | 'time' | 'month';
 
 export interface FormField {
   key: string;
   labelAr: string;
   labelEn: string;
-  type: 'number' | 'text' | 'boolean' | 'date' | 'select' | 'time';
+  type: FieldType;
+  hint?: string;
+  optionLabels?: Record<string, string>;
+  limitsBy?: { field: string; cases: Record<string, Limits> };
+  validMin?: number;
+  validMax?: number;
+  after?: string;
+  pattern?: string;
+  patternMessage?: string;
+  unique?: boolean;
+  uniqueWith?: string[];
+  carryFrom?: string;
+  carryMatch?: string[];
+  compute?: FieldCompute;
+  prefill?: 'equipment.code' | 'equipment.name' | 'equipment.location' | 'branch.name';
+  onCriticalDeviation?: string;
+  companyOptions?: boolean;
   unit?: string;
   required?: boolean;
   options?: string[];
@@ -199,8 +234,21 @@ export interface ControlledDocument {
   owner_name: string | null;
 }
 
+export interface FillContext {
+  company: { name: string; code: string };
+  branch: string | null;
+  site: string | null;
+  deviceNo: string | null;
+  employee: { id: string; name: string; employeeNo: string; role: Role; department: Department | null };
+  access: RecordAccess;
+  serverTime: string;
+}
+
 export interface ResolvedForm {
   kind: 'FORM' | 'EQUIPMENT';
+  context?: FillContext;
+  prefill?: Record<string, unknown>;
+  minDailyEntries?: number;
   department: Department | null;
   template: { id: string; code: string; titleAr: string; titleEn: string; description: string | null; version: number; fields: FormField[] };
   ccp: { code: string; nameAr: string; hazard: string; criticalLimit: string; correctiveAction: string } | null;
@@ -230,6 +278,39 @@ export interface MonitoringRecord {
   product_name: string | null;
   recorded_at: string;
   capa_id: string | null;
+  template_id: string;
+  template_code: string;
+  data: Record<string, unknown>;
+  notes: string | null;
+  corrective_action_taken: string | null;
+  source: 'QR' | 'MANUAL' | 'IOT';
+  recorded_by: string;
+  company_name: string;
+  branch_name: string | null;
+  equipment_name: string | null;
+  equipment_location: string | null;
+  recorded_by_employee_no: string;
+  recorded_by_role: Role;
+  device_info: string | null;
+  template_version: number;
+  revision: number;
+  amended_at: string | null;
+  amended_by_name: string | null;
+  amendment_reason: string | null;
+  template_fields?: FormField[];
+  template_current_version?: number;
+}
+
+export interface RecordRevision {
+  revision: number;
+  data: Record<string, unknown>;
+  status: 'PASS' | 'FAIL';
+  deviations: Deviation[];
+  authored_at: string;
+  authored_by_name: string;
+  superseded_at: string;
+  superseded_by_name: string;
+  reason: string;
 }
 
 export interface FormTemplateSummary {
@@ -240,11 +321,52 @@ export interface FormTemplateSummary {
   department_code: Department | null;
   ccp_id: string | null;
   qr_token: string;
+  fields: FormField[];
+  version: number;
+  catalog_id: string | null;
+  min_daily_entries: number;
+}
+
+/** Platform form library. */
+export interface CatalogForm {
+  id: string;
+  code: string;
+  title_ar: string;
+  title_en: string;
+  description: string | null;
+  category: string;
+  department_code: Department | null;
+  ccp_code: string | null;
+  fields: FormField[];
+  min_daily_entries: number;
+  version: number;
+  is_default: boolean;
+  is_active: boolean;
+  companies_count?: number;
+  propagated_to?: number;
+}
+
+/** A library form as enabled (or not) for one company. */
+export interface TenantForm {
+  catalog_id: string;
+  code: string;
+  title_ar: string;
+  title_en: string;
+  category: string;
+  catalog_version: number;
+  catalog_active: boolean;
+  is_default: boolean;
+  template_id: string | null;
+  enabled: boolean;
+  customized: boolean;
+  version: number | null;
+  synced_version: number | null;
+  records_count: number;
 }
 
 export interface Alert {
   id: string;
-  source_type: 'CCP_DEVIATION' | 'HEALTH_CERT_EXPIRY' | 'EQUIPMENT_MAINTENANCE';
+  source_type: 'CCP_DEVIATION' | 'HEALTH_CERT_EXPIRY' | 'EQUIPMENT_MAINTENANCE' | 'MISSED_MONITORING' | string;
   department_code: Department | null;
   severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
   title: string;

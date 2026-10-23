@@ -22,12 +22,56 @@ export interface Ccp {
   is_active: boolean;
 }
 
+export interface Limits {
+  min?: number;
+  max?: number;
+}
+
+/** Values the server calculates itself (PRD "virtual" fields) — never accepted from the client. */
+export type FieldCompute =
+  /** e.g. closing_balance = opening + inbound − consumption − waste */
+  | { kind: 'sum'; terms: { field: string; sign: 1 | -1 }[] }
+  /** whole days from today until a date field (negative once passed) */
+  | { kind: 'daysUntil'; field: string }
+  /** FEFO status from a date field: Safe / Expiring Soon (≤ warnDays) / Expired */
+  | { kind: 'expiryStatus'; field: string; warnDays: number }
+  /** Compliant / Non-Compliant from the deviations of the listed fields */
+  | { kind: 'compliance'; fields: string[] };
+
+/** Auto-filled from where the QR code was scanned. */
+export type FieldPrefill = 'equipment.code' | 'equipment.name' | 'equipment.location' | 'branch.name';
+
 /** One input on a digital form. Limits make the field self-validating against HACCP rules. */
 export interface FormField {
   key: string;
   labelAr: string;
   labelEn: string;
-  type: 'number' | 'text' | 'boolean' | 'date' | 'select' | 'time';
+  type: 'number' | 'text' | 'boolean' | 'date' | 'select' | 'time' | 'month';
+  hint?: string;
+  /** Display labels for stored option values (e.g. Accepted → مقبولة). */
+  optionLabels?: Record<string, string>;
+  /** Critical limits that depend on another (select) field, e.g. chilled 2–8 °C, frozen ≤ −18 °C. */
+  limitsBy?: { field: string; cases: Record<string, Limits> };
+  /** Hard input range: values outside are refused (e.g. quantity ≥ 0) — unlike min/max, which raise a deviation. */
+  validMin?: number;
+  validMax?: number;
+  /** Date that must be strictly after another date field (e.g. expiry_date > mfg_date), otherwise refused. */
+  after?: string;
+  /** Regular expression the text must match (e.g. ERP purchase-order number). */
+  pattern?: string;
+  patternMessage?: string;
+  /** Value may appear only once per form (optionally together with other fields, e.g. month + item). */
+  unique?: boolean;
+  uniqueWith?: string[];
+  /** Carried over from this field of the previous record (optionally matched on other fields). */
+  carryFrom?: string;
+  carryMatch?: string[];
+  compute?: FieldCompute;
+  prefill?: FieldPrefill;
+  /** Select: the value forced when a critical deviation exists (e.g. acceptance = Rejected). */
+  onCriticalDeviation?: string;
+  /** Select: the company maintains the option list itself (e.g. approved suppliers). */
+  companyOptions?: boolean;
   unit?: string;
   required?: boolean;
   options?: string[];
@@ -57,10 +101,13 @@ export interface FormTemplate {
   qr_token: string;
   version: number;
   is_active: boolean;
+  catalog_id: string | null;
+  customized: boolean;
+  min_daily_entries: number;
 }
 
 const TEMPLATE_COLUMNS = `t.id, t.code, t.title_ar, t.title_en, t.description, t.department_id, d.code AS department_code,
-  t.ccp_id, t.fields, t.qr_token, t.version, t.is_active`;
+  t.ccp_id, t.fields, t.qr_token, t.version, t.is_active, t.catalog_id, t.customized, t.min_daily_entries`;
 
 export async function listCcps(departmentId?: number) {
   const { rows } = await query<Ccp>(

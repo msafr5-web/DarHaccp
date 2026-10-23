@@ -15,6 +15,12 @@ interface ModuleLink {
 /** PRD §2.1: the five operational modules, filtered by what the signed-in role may use. */
 const SECTIONS: { title: string; links: ModuleLink[] }[] = [
   {
+    title: 'النماذج والسجلات',
+    links: [
+      { icon: '📄', title: 'سجلات النماذج المعبأة', description: 'من عبأ، أين، بأي جهاز ومتى — مع سجل التعديلات', href: '/records', permission: 'record:read' },
+    ],
+  },
+  {
     title: 'الجودة والتحسين المستمر',
     links: [
       { icon: '🚨', title: 'الإبلاغ عن حادث / عدم مطابقة', description: 'بلاغ فوري يفتح إجراءً تصحيحياً تلقائياً', href: '/incidents/new', permission: 'incident:create' },
@@ -40,6 +46,7 @@ const SECTIONS: { title: string; links: ModuleLink[] }[] = [
   {
     title: 'حساب الشركة والأمان',
     links: [
+      { icon: '👥', title: 'الموظفون والصلاحيات', description: 'إضافة الموظفين: تعبئة فقط أو تعبئة وتعديل', href: '/users', permission: 'user:manage' },
       { icon: '🔐', title: 'سجل محاولات الدخول', description: 'كل محاولة دخول ناجحة أو فاشلة على حسابات الشركة', href: '/security', permission: 'security:read' },
     ],
   },

@@ -68,6 +68,8 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
       departmentCode: user.department_code,
       branchId: user.branch_id,
       fullName: user.full_name,
+      employeeNo: user.employee_no,
+      recordAccess: user.record_access,
       tenantId: payload.tid,
       tenantCode: user.tenant_code,
       tenantName: user.tenant_name,

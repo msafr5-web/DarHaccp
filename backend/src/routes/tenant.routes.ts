@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import * as forms from '../controllers/catalog.controller';
 import * as tenants from '../controllers/tenant.controller';
 import { authorize, authorizePlatform } from '../middlewares/auth';
 import { authRateLimiter } from '../middlewares/security';
@@ -26,6 +27,18 @@ platformRoutes.post('/tenants/:id/reactivate', validate({ params: tenants.tenant
 platformRoutes.post('/tenants/:id/reopen', validate({ params: tenants.tenantIdParams, body: tenants.reviewSchema }), tenants.reopen);
 platformRoutes.post('/tenants/:id/resend-activation', validate({ params: tenants.tenantIdParams }), tenants.resendActivationLink);
 platformRoutes.get('/login-attempts', validate({ query: tenants.attemptsQuery }), tenants.platformAttempts);
+
+// Form library (add / remove fields) and the forms enabled for each company.
+platformRoutes.get('/catalog', forms.list);
+platformRoutes.post('/catalog', validate({ body: forms.catalogCreateSchema }), forms.create);
+platformRoutes.get('/catalog/:id', validate({ params: forms.catalogIdParams }), forms.get);
+platformRoutes.patch('/catalog/:id', validate({ params: forms.catalogIdParams, body: forms.catalogUpdateSchema }), forms.update);
+platformRoutes.get('/tenants/:id/forms', validate({ params: tenants.tenantIdParams }), forms.tenantForms);
+platformRoutes.get('/tenants/:id/forms/:catalogId', validate({ params: forms.tenantFormParams }), forms.tenantForm);
+platformRoutes.post('/tenants/:id/forms/:catalogId/enable', validate({ params: forms.tenantFormParams }), forms.enable);
+platformRoutes.post('/tenants/:id/forms/:catalogId/disable', validate({ params: forms.tenantFormParams }), forms.disable);
+platformRoutes.put('/tenants/:id/forms/:catalogId/fields', validate({ params: forms.tenantFormParams, body: forms.tenantFieldsSchema }), forms.customize);
+platformRoutes.post('/tenants/:id/forms/:catalogId/reset', validate({ params: forms.tenantFormParams }), forms.reset);
 
 /** Company-level account & security endpoints. */
 export const companyRoutes = Router();

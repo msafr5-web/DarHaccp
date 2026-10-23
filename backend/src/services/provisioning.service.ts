@@ -2,11 +2,11 @@ import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import type { PoolClient } from 'pg';
 import * as data from '../db/seedData';
-import { generateQrToken } from './qr.service';
+import { provisionDefaultForms } from './formCatalog.service';
 
 /**
  * Default content every company starts with: main branch, the reference HACCP plan (CCPs with
- * hazard types and critical limits), the digital forms with fresh QR codes, and the IoT service
+ * hazard types and critical limits), the default library forms with fresh QR codes, and the IoT service
  * account. Must run inside a transaction scoped to the new tenant; idempotent.
  */
 export async function provisionTenantDefaults(db: PoolClient) {
@@ -28,13 +28,8 @@ export async function provisionTenantDefaults(db: PoolClient) {
     );
   }
 
-  for (const t of data.templates) {
-    await db.query(
-      `INSERT INTO form_templates (code, title_ar, title_en, department_id, ccp_id, fields, qr_token)
-       VALUES ($1, $2, $3, $4, (SELECT id FROM ccps WHERE code = $5), $6, $7) ON CONFLICT (tenant_id, code) DO NOTHING`,
-      [t.code, t.titleAr, t.titleEn, await deptId(t.department), t.ccp, JSON.stringify(t.fields), generateQrToken()],
-    );
-  }
+  // Digital forms: every default form of the platform library, each with its own QR code.
+  await provisionDefaultForms(db);
 
   // Inactive service account that IoT probe readings are recorded under: it can never sign in.
   await db.query(

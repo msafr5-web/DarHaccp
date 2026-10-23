@@ -57,6 +57,7 @@ export default function PlatformScreen() {
               </View>
             </Card>
           ) : null}
+          <Button title="🧩 مكتبة النماذج (الحقول والخصائص)" onPress={() => router.push('/platform/forms')} />
           <Button title="🔐 سجل محاولات الدخول لكل الشركات" variant="outline" onPress={() => router.push('/platform/attempts')} />
           <View style={{ height: 10 }} />
           <Input placeholder="بحث بالاسم أو الرمز أو البريد أو الجوال أو الرقم التعريفي" value={search} onChangeText={setSearch} />

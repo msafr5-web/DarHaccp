@@ -7,6 +7,9 @@ export interface AuthUser {
   departmentCode: DepartmentCode | null;
   branchId: number | null;
   fullName: string;
+  employeeNo: string;
+  /** FILL = may only fill forms; FILL_EDIT = may also amend records (with a reason, fully traced). */
+  recordAccess: 'FILL' | 'FILL_EDIT';
   /** Company (tenant) the user belongs to — every query of the request is confined to it. */
   tenantId: number;
   tenantCode: string;

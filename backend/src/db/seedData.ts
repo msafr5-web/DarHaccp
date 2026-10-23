@@ -246,6 +246,9 @@ export const templates: TemplateSeed[] = [
   },
 ];
 
+/** Demo approved-supplier list of the inbound receiving form (each company maintains its own). */
+export const demoSuppliers = ['شركة المراعي', 'شركة تنمية الغذائية', 'مؤسسة الوطنية للدواجن', 'شركة الأغذية المبردة المتحدة'];
+
 export const recipes = [
   {
     code: 'SW-KUNAFA', nameAr: 'كنافة بالقشطة', nameEn: 'Kunafa with cream', department: 'SWEETS', shelfLifeHours: 24, storageTempMax: 4,
@@ -311,4 +314,7 @@ export const equipment = [
   { code: 'FR-SUP-01', name: 'Receiving chiller', type: 'FRIDGE', department: 'SUPPORT', location: 'Receiving bay', template: 'FRIDGE_CHECK', interval: 90 },
   { code: 'BC-HOT-01', name: 'Blast chiller 1', type: 'BLAST_CHILLER', department: 'HOT', location: 'Hot kitchen — chilling area', template: 'BLAST_CHILLING', interval: 90 },
   { code: 'VAN-01', name: 'Refrigerated van 1', type: 'VEHICLE', department: 'SUPPORT', location: 'Fleet', template: 'VEHICLE_CHECK', interval: 60 },
+  // Warehouse data loggers: scanning their QR opens the environmental monitoring form with zone & sensor pre-filled.
+  { code: 'DL-CS-02', name: 'Data logger — cold store 2', type: 'DATA_LOGGER', department: 'SUPPORT', location: 'مستودع التبريد 2', template: 'ENV_MONITORING', interval: 180 },
+  { code: 'DL-DRY-01', name: 'Data logger — dry store', type: 'DATA_LOGGER', department: 'SUPPORT', location: 'المستودع الجاف', template: 'ENV_MONITORING', interval: 180 },
 ] as const;

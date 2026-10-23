@@ -3,6 +3,8 @@ import { pool, withTransaction } from '../config/database';
 import { env } from '../config/env';
 import { logger } from '../config/logger';
 import { CHECKLISTS } from '../services/auditChecklists';
+import type { FormField } from '../models/haccp.model';
+import { provisionCategory, syncCatalogSeed } from '../services/formCatalog.service';
 import { provisionTenantDefaults } from '../services/provisioning.service';
 import { generateQrToken } from '../services/qr.service';
 import { encrypt } from '../utils/crypto';
@@ -35,6 +37,8 @@ async function seed() {
       [DEMO_TENANT_ID, env.SEED_ADMIN_EMAIL],
     );
     await db.query(`SELECT setval(pg_get_serial_sequence('tenants', 'id'), GREATEST((SELECT max(id) FROM tenants), 2))`);
+    // Platform form library (new forms only — edits made by the platform administrator are kept).
+    await syncCatalogSeed(db);
   });
 
   // SaaS operator: reviews and approves companies (lives in the platform tenant #1).
@@ -58,6 +62,15 @@ async function seed() {
       code ? (await db.query<{ id: number }>('SELECT id FROM departments WHERE code = $1', [code])).rows[0]!.id : null;
 
     await provisionTenantDefaults(db);
+    // The demo company also gets the PRD warehouse / GDP forms, with a demo approved-supplier list.
+    await provisionCategory(db, 'WMS_GDP');
+    const { rows: inbound } = await db.query<{ id: string; fields: FormField[] }>(
+      `SELECT id, fields FROM form_templates WHERE code = 'INBOUND_SHIPMENT'`,
+    );
+    if (inbound[0]?.fields.some((f) => f.companyOptions && !f.options?.length)) {
+      const fields = inbound[0].fields.map((f) => (f.companyOptions && !f.options?.length ? { ...f, options: data.demoSuppliers } : f));
+      await db.query('UPDATE form_templates SET fields = $2 WHERE id = $1', [inbound[0].id, JSON.stringify(fields)]);
+    }
     for (const [code, hazardType] of Object.entries(data.ccpHazardTypes)) {
       await db.query('UPDATE ccps SET hazard_type = $2 WHERE code = $1 AND hazard_type IS DISTINCT FROM $2::hazard_type', [code, hazardType]);
     }

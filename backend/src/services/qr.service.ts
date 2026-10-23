@@ -7,7 +7,8 @@ import { findEquipment } from '../models/equipment.model';
 import { canAccessDepartment } from '../middlewares/auth';
 import type { AuthUser } from '../types/express';
 import { AppError } from '../utils/AppError';
-import { describeLimits, effectiveLimits } from './haccpRules';
+import { describeLimits, effectiveLimits, limitText } from './haccpRules';
+import { formPrefill } from './record.service';
 
 /** 144-bit random, URL-safe and non-guessable (labels are physically exposed in kitchens). */
 export function generateQrToken(): string {
@@ -15,7 +16,8 @@ export function generateQrToken(): string {
 }
 
 export function buildQrPayload(token: string): string {
-  return `${env.QR_BASE_URL.replace(/\/+$/, '')}/${token}`;
+  const base = env.QR_BASE_URL ?? `${env.APP_URL.replace(/\/+$/, '')}/q`;
+  return `${base.replace(/\/+$/, '')}/${token}`;
 }
 
 /** Accepts the full scanned payload (URL) or the bare token. */
@@ -78,8 +80,25 @@ export async function resolveQr(user: AuthUser, payload: string) {
   if (!canAccessDepartment(user, departmentId)) throw AppError.forbidden('This form belongs to another department');
 
   const ccp = template.ccp_id ? await findCcpById(template.ccp_id) : null;
+  const { rows: branch } = await query<{ name_ar: string }>(
+    'SELECT name_ar FROM branches WHERE ($1::smallint IS NULL OR id = $1) ORDER BY id LIMIT 1',
+    [user.branchId],
+  );
 
   return {
+    // Shown at the top of the form and stored with the record: who fills what, where and when.
+    context: {
+      company: { name: user.tenantName, code: user.tenantCode },
+      branch: branch[0]?.name_ar ?? null,
+      site: equipment?.location ?? branch[0]?.name_ar ?? null,
+      deviceNo: equipment?.code ?? null,
+      employee: { id: user.id, name: user.fullName, employeeNo: user.employeeNo, role: user.role, department: user.departmentCode },
+      access: user.role === 'ADMIN' ? 'FILL_EDIT' : user.recordAccess,
+      serverTime: new Date().toISOString(),
+    },
+    /** Automatic values (data-logger code, zone, carried balances): shown read-only, re-applied by the server. */
+    prefill: await formPrefill(user, template, equipment),
+    minDailyEntries: template.min_daily_entries,
     kind: equipment ? ('EQUIPMENT' as const) : ('FORM' as const),
     // Where the app should POST the completed form.
     department: equipment?.department_code ?? template.department_code ?? user.departmentCode,
@@ -94,8 +113,7 @@ export async function resolveQr(user: AuthUser, payload: string) {
       fields: template.fields.map((f) => {
         const limits = effectiveLimits(f, ccp);
         const unit = f.ccpMeasurement && ccp ? ccp.unit : f.unit;
-        const limitText = f.durationFrom && f.maxMinutes ? `المدة ≤ ${f.maxMinutes} دقيقة` : describeLimits(limits, unit) || undefined;
-        return { ...f, unit, min: limits.min, max: limits.max, limitText };
+        return { ...f, unit, min: limits.min, max: limits.max, limitText: limitText(f, ccp) };
       }),
     },
     ccp: ccp && {

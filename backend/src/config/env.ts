@@ -29,7 +29,8 @@ const schema = z.object({
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(600),
   AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(10),
 
-  QR_BASE_URL: z.string().url().default('https://haccp.daraldhiafa.sa/q'),
+  /** Base of the URLs printed in QR codes. Defaults to `${APP_URL}/q` so a phone camera opens the web form. */
+  QR_BASE_URL: z.string().url().optional(),
 
   HEALTH_CERT_WARNING_DAYS: z.coerce.number().int().positive().default(30),
   SCHEDULER_INTERVAL_MINUTES: z.coerce.number().int().positive().default(60),

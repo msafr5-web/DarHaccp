@@ -7,7 +7,8 @@ import { findRecordById, listRecords } from '../models/record.model';
 import { canAccessDepartment } from '../middlewares/auth';
 import { formFieldsSchema } from '../services/haccpRules';
 import { generateQrToken } from '../services/qr.service';
-import { submitRecord } from '../services/record.service';
+import { findEquipment } from '../models/equipment.model';
+import { AmendRecordInput, amendRecord, formPrefill, listRevisions, submitRecord } from '../services/record.service';
 import { AppError } from '../utils/AppError';
 import { created, dbContext, ok, paginate, requireUser } from '../utils/http';
 import { departmentCode, isoDateTime, optText, pagination, uuid } from '../utils/schemas';
@@ -158,6 +159,10 @@ export async function updateTemplate(req: Request, res: Response) {
   const b = req.valid.body as z.infer<typeof templateUpdateSchema>;
   const existing = await findTemplate({ id });
   if (!existing) throw AppError.notFound('Form template');
+  // Library forms are configured by the platform administrator (fields, availability).
+  if (existing.catalog_id && (b.fields !== undefined || b.isActive !== undefined)) {
+    throw new AppError(403, 'FORM_MANAGED_BY_PLATFORM', 'حقول هذا النموذج وتفعيله تُدار من إدارة المنصة — تواصل معها لأي تعديل');
+  }
   assertCcpField(b.fields ?? existing.fields, b.ccpId !== undefined ? b.ccpId : existing.ccp_id);
 
   await withTransaction(dbContext(req), (db) =>
@@ -174,6 +179,43 @@ export async function updateTemplate(req: Request, res: Response) {
     ),
   );
   return ok(res, await findTemplate({ id }));
+}
+
+export const optionsSchema = z.object({
+  field: z.string().regex(/^[a-z][a-z0-9_]{1,40}$/),
+  options: z.array(z.string().trim().min(1).max(100)).max(200)
+    .refine((o) => new Set(o).size === o.length, { message: 'القيم مكررة' }),
+});
+
+/**
+ * Company-maintained option lists (e.g. the approved supplier list of the receiving form).
+ * Only fields flagged `companyOptions` by the platform may be changed; the form version is not bumped.
+ */
+export async function updateOptions(req: Request, res: Response) {
+  const { id } = req.valid.params as { id: string };
+  const b = req.valid.body as z.infer<typeof optionsSchema>;
+  const t = await findTemplate({ id });
+  if (!t) throw AppError.notFound('Form template');
+  const field = t.fields.find((f) => f.key === b.field);
+  if (!field?.companyOptions) throw AppError.forbidden('هذه القائمة تُدار من إدارة المنصة');
+  const fields = t.fields.map((f) => (f.key === b.field ? { ...f, options: b.options } : f));
+  await withTransaction(dbContext(req), (db) => db.query('UPDATE form_templates SET fields = $2 WHERE id = $1', [id, JSON.stringify(fields)]));
+  return ok(res, await findTemplate({ id }));
+}
+
+export const prefillSchema = z.object({
+  equipmentId: uuid.optional(),
+  data: z.record(z.string(), z.unknown()).default({}),
+});
+
+/** Automatic values while filling (data-logger code / zone, opening balance carried from the previous month…). */
+export async function prefill(req: Request, res: Response) {
+  const { id } = req.valid.params as { id: string };
+  const b = req.valid.body as z.infer<typeof prefillSchema>;
+  const t = await findTemplate({ id });
+  if (!t || !t.is_active || !canAccessDepartment(req.user, t.department_id)) throw AppError.notFound('Form template');
+  const equipment = b.equipmentId ? await findEquipment({ id: b.equipmentId }) : null;
+  return ok(res, await formPrefill(requireUser(req), t, equipment ?? null, b.data));
 }
 
 // ---------------------------------------------------------------- Monitoring records (per kitchen)
@@ -197,6 +239,15 @@ export const submitRecordSchema = z.object({
   source: z.enum(['QR', 'MANUAL']).default('MANUAL'),
   recordedAt: isoDateTime.optional(),
   clientRef: uuid.optional(),
+  /** Phone / browser identifier (shown on the record as the filling device). */
+  deviceId: z.string().trim().max(100).optional(),
+});
+
+export const amendRecordSchema = z.object({
+  data: z.record(z.string(), z.unknown()),
+  reason: z.string().trim().min(5, 'سبب التعديل مطلوب (5 أحرف على الأقل)').max(1000),
+  notes: z.string().trim().max(2000).nullable().optional(),
+  correctiveActionTaken: z.string().trim().max(2000).nullable().optional(),
 });
 
 export async function getRecords(req: Request, res: Response) {
@@ -212,9 +263,25 @@ export async function getRecord(req: Request, res: Response) {
   return ok(res, record);
 }
 
+/** FILL_EDIT employees: corrects a record; the previous version is kept with the reason. */
+export async function amend(req: Request, res: Response) {
+  const { id } = req.valid.params as { id: string };
+  return ok(res, await amendRecord(dbContext(req), requireUser(req), req.department!, id, req.valid.body as AmendRecordInput));
+}
+
+export async function revisions(req: Request, res: Response) {
+  const { id } = req.valid.params as { id: string };
+  const record = await findRecordById(id);
+  if (!record || record.department_id !== req.department!.id) throw AppError.notFound('Record');
+  return ok(res, await listRevisions(id));
+}
+
 export async function createRecord(req: Request, res: Response) {
   const b = req.valid.body as z.infer<typeof submitRecordSchema>;
-  const record = await submitRecord(dbContext(req), requireUser(req), req.department!, b);
+  const record = await submitRecord(dbContext(req), requireUser(req), req.department!, {
+    ...b,
+    deviceId: b.deviceId ?? req.get('user-agent')?.slice(0, 100),
+  });
   // 201 in both cases; the client inspects `status` / `deviations` to show the CAPA prompt.
   return created(res, record);
 }

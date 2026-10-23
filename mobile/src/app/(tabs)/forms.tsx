@@ -4,6 +4,7 @@ import { FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
 import { api } from '@/api/client';
 import type { FormTemplateSummary } from '@/api/types';
 import { Badge, Card, Empty, OfflineNote, styles } from '@/components/ui';
+import { useAuth } from '@/context/AuthContext';
 import { useApi } from '@/hooks/useApi';
 import { cacheForm } from '@/offline';
 import { colors, departmentLabel } from '@/theme';
@@ -27,6 +28,7 @@ async function prefetchForms(templates: FormTemplateSummary[]) {
 /** Manual fallback when a QR label is missing or damaged. */
 export default function FormsScreen() {
   const { data: templates, error, loading, offline, reload } = useApi<FormTemplateSummary[]>('/haccp/templates');
+  const { can } = useAuth();
 
   useEffect(() => {
     if (templates && !offline) void prefetchForms(templates);
@@ -54,7 +56,18 @@ export default function FormsScreen() {
             </View>
             <Text style={styles.muted}>
               {item.title_en} · {item.department_code ? departmentLabel[item.department_code] : 'جميع الأقسام'}
+              {item.min_daily_entries ? ` · ${item.min_daily_entries} قراءات يومياً على الأقل` : ''}
             </Text>
+            <View style={[styles.row, { marginTop: 8, flexWrap: 'wrap' }]}>
+              <Pressable onPress={() => router.push({ pathname: '/records', params: { templateId: item.id, department: item.department_code ?? undefined } })}>
+                <Text style={{ color: colors.primary, fontWeight: '700' }}>📄 السجلات</Text>
+              </Pressable>
+              {can('haccp:manage') && item.fields?.some((f) => f.companyOptions) ? (
+                <Pressable onPress={() => router.push({ pathname: '/template-options/[id]', params: { id: item.id } })}>
+                  <Text style={{ color: colors.primary, fontWeight: '700' }}>  ⚙ القوائم المعتمدة</Text>
+                </Pressable>
+              ) : null}
+            </View>
           </Card>
         </Pressable>
       )}

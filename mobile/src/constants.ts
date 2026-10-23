@@ -65,3 +65,10 @@ export const TENANT_STATUS = {
   SUSPENDED: { label: 'موقوفة', color: colors.danger },
   REJECTED: { label: 'مرفوضة', color: '#7A271A' },
 } as const;
+
+/** Categories of the platform form library. */
+export const CATEGORY_LABEL: Record<string, string> = {
+  HACCP: 'سجلات الهاسب للمطابخ',
+  WMS_GDP: 'المستودعات وسلاسل التبريد (PRD — GDP / SFDA)',
+  HSE: 'الصحة والسلامة',
+};

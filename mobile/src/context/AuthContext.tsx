@@ -55,6 +55,9 @@ const UI_PERMISSIONS = {
   'contractor:manage': ['ADMIN', 'HSE_OFFICER'],
   'document:read': ALL,
   'security:read': ['ADMIN'],
+  'user:manage': ['ADMIN'],
+  'haccp:manage': ['ADMIN', 'HACCP_OFFICER'],
+  'record:read': ALL,
 } satisfies Record<string, Role[]>;
 
 export type UiPermission = keyof typeof UI_PERMISSIONS;

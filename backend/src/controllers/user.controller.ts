@@ -26,6 +26,8 @@ export const createUserSchema = z.object({
   password: passwordPolicy.optional(),
   role: z.enum(ROLES),
   department: departmentCode.optional(),
+  /** FILL = fill forms only; FILL_EDIT = fill and amend records. */
+  recordAccess: z.enum(['FILL', 'FILL_EDIT']).default('FILL'),
 });
 
 export const updateUserSchema = z
@@ -35,6 +37,7 @@ export const updateUserSchema = z
     role: z.enum(ROLES),
     department: departmentCode.nullable(),
     isActive: z.boolean(),
+    recordAccess: z.enum(['FILL', 'FILL_EDIT']),
   })
   .partial();
 
@@ -69,9 +72,9 @@ export async function create(req: Request, res: Response) {
   const hash = b.password ? await bcrypt.hash(b.password, 12) : await unusablePasswordHash();
   const id = await withTransaction(dbContext(req), async (db) => {
     const { rows } = await db.query<{ id: string }>(
-      `INSERT INTO users (employee_no, full_name, email, phone, password_hash, role, department_id)
-       VALUES ($1, $2, LOWER($3), $4, $5, $6, $7) RETURNING id`,
-      [b.employeeNo, b.fullName, b.email, b.phone ?? null, hash, b.role, deptId],
+      `INSERT INTO users (employee_no, full_name, email, phone, password_hash, role, department_id, record_access, branch_id)
+       VALUES ($1, $2, LOWER($3), $4, $5, $6, $7, $8, (SELECT id FROM branches ORDER BY id LIMIT 1)) RETURNING id`,
+      [b.employeeNo, b.fullName, b.email, b.phone ?? null, hash, b.role, deptId, b.recordAccess],
     );
     return rows[0]!.id;
   });
@@ -93,10 +96,11 @@ export async function update(req: Request, res: Response) {
       `UPDATE users SET full_name = COALESCE($2, full_name),
               phone = CASE WHEN $3::boolean THEN $4 ELSE phone END,
               role = COALESCE($5, role), department_id = $6, is_active = COALESCE($7, is_active),
+              record_access = COALESCE($8, record_access),
               -- Deactivation also clears the push token so the device stops receiving alerts.
               push_token = CASE WHEN $7 = false THEN NULL ELSE push_token END
         WHERE id = $1`,
-      [id, b.fullName ?? null, b.phone !== undefined, b.phone ?? null, b.role ?? null, deptId, b.isActive ?? null],
+      [id, b.fullName ?? null, b.phone !== undefined, b.phone ?? null, b.role ?? null, deptId, b.isActive ?? null, b.recordAccess ?? null],
     ),
   );
   return ok(res, await findUserById(id));
