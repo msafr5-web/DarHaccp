@@ -6,12 +6,18 @@ import { colors } from '../theme';
 import { Badge, Card, Chips, Empty, styles } from './ui';
 
 const STAGES: Record<LoginAttempt['stage'], string> = {
-  PASSWORD: 'كلمة المرور',
+  EMAIL: 'طلب رابط الدخول',
+  MAGIC_LINK: 'الدخول بالرابط',
   OTP: 'رمز التحقق',
-  OTP_RESEND: 'إعادة إرسال الرمز',
+  OTP_RESEND: 'إعادة الإرسال',
+  PASSWORD: 'كلمة المرور',
 };
 
 const REASONS: Record<string, string> = {
+  UNKNOWN_EMAIL: 'بريد غير مسجل',
+  EMAIL_COOLDOWN: 'طلب متكرر خلال دقيقة (أُعيد استخدام الرسالة السابقة)',
+  EMAIL_THROTTLED: 'تجاوز حد الرسائل — حماية من الإغراق',
+  MAGIC_LINK_INVALID: 'رابط دخول غير صالح',
   WRONG_PASSWORD: 'كلمة مرور خاطئة',
   UNKNOWN_USER: 'مستخدم غير موجود',
   UNKNOWN_COMPANY: 'رمز شركة غير موجود',

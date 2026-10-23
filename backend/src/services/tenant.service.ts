@@ -214,8 +214,9 @@ export async function approveTenant(ctx: DbContext, id: number, notes?: string) 
       return rows[0]!;
     });
 
-    const activationUrl = await issuePasswordToken(adminId, id, 'ACTIVATION', 72);
-    await sendEmail(emails.approved(approved.email, approved, activationUrl, companyLoginUrl(approved.code, approved.email)));
+    // Password-less: the administrator signs in with the e-mail (link + code), no activation step.
+    void adminId;
+    await sendEmail(emails.approved(approved.email, approved, companyLoginUrl(approved.code, approved.email)));
     return approved;
   });
 }
@@ -250,7 +251,7 @@ export async function setTenantStatus(ctx: DbContext, id: number, action: 'REJEC
   });
 }
 
-/** Re-sends the company administrator's activation link (e.g. the first one expired). */
+/** Re-sends the approval e-mail with the company's login link. */
 export async function resendActivation(id: number) {
   return runAsSystem(async () => {
     const tenant = await loadTenant(id);
@@ -260,7 +261,6 @@ export async function resendActivation(id: number) {
       [id],
     );
     if (!rows[0]) throw AppError.notFound('Company administrator');
-    const url = await issuePasswordToken(rows[0].id, id, 'ACTIVATION', 72);
-    await sendEmail(emails.approved(tenant.email, tenant, url, companyLoginUrl(tenant.code, tenant.email)));
+    await sendEmail(emails.approved(tenant.email, tenant, companyLoginUrl(tenant.code, tenant.email)));
   });
 }

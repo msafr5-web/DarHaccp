@@ -8,6 +8,7 @@ import { findUserById, listUsers } from '../models/user.model';
 import { AppError } from '../utils/AppError';
 import { created, dbContext, ok, paginate } from '../utils/http';
 import { departmentCode, pagination } from '../utils/schemas';
+import { unusablePasswordHash } from '../services/provisioning.service';
 import { passwordPolicy } from './auth.controller';
 
 export const listUsersQuery = pagination.extend({
@@ -21,7 +22,8 @@ export const createUserSchema = z.object({
   fullName: z.string().trim().min(2).max(150),
   email: z.email().max(255),
   phone: z.string().trim().max(20).optional(),
-  password: passwordPolicy,
+  /** Optional: users sign in with their e-mail (link + code); a password is only kept for API clients. */
+  password: passwordPolicy.optional(),
   role: z.enum(ROLES),
   department: departmentCode.optional(),
 });
@@ -64,7 +66,7 @@ export async function create(req: Request, res: Response) {
   if (!CROSS_DEPARTMENT_ROLES.includes(b.role) && !deptId) {
     throw AppError.unprocessable('Kitchen staff (supervisor/chef) must be assigned to a department');
   }
-  const hash = await bcrypt.hash(b.password, 12);
+  const hash = b.password ? await bcrypt.hash(b.password, 12) : await unusablePasswordHash();
   const id = await withTransaction(dbContext(req), async (db) => {
     const { rows } = await db.query<{ id: string }>(
       `INSERT INTO users (employee_no, full_name, email, phone, password_hash, role, department_id)

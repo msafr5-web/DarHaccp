@@ -6,8 +6,9 @@ import { validate } from '../middlewares/validate';
 
 const router = Router();
 
-// Two-step sign-in: company code + e-mail + password, then the e-mailed one-time code.
+// Password-less sign-in: e-mail -> one message with a login link and a 6-digit code.
 router.post('/login', authRateLimiter, validate({ body: auth.loginSchema }), auth.login);
+router.post('/magic-link', authRateLimiter, validate({ body: auth.magicLinkSchema }), auth.verifyMagicLinkLogin);
 router.post('/verify-otp', authRateLimiter, validate({ body: auth.verifyOtpSchema }), auth.verifyOtp);
 router.post('/resend-otp', authRateLimiter, validate({ body: auth.resendOtpSchema }), auth.resendOtp);
 router.post('/activate', authRateLimiter, validate({ body: auth.activateSchema }), auth.activate);

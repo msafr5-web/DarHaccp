@@ -77,12 +77,23 @@ const button = (href: string, label: string) =>
   `<p style="text-align:center;margin:22px 0"><a href="${esc(href)}" style="background:#0b5d3b;color:#fff;padding:12px 26px;border-radius:10px;text-decoration:none;font-weight:bold">${esc(label)}</a></p>`;
 
 export const emails = {
-  loginOtp: (to: string, name: string, code: string, minutes: number): Email => ({
+  /** Password-less sign-in: one message with a one-click link and the same session's 6-digit code. */
+  loginCode: (to: string, name: string, company: string, code: string, loginUrl: string, minutes: number): Email => ({
     to,
-    subject: `رمز الدخول ${code} — DarHaccp`,
-    text: `رمز التحقق لتسجيل الدخول: ${code} (صالح ${minutes} دقائق). لا تشاركه مع أحد.`,
-    html: layout('رمز تسجيل الدخول', `<p>مرحباً ${esc(name)}،</p><p>رمز التحقق لتسجيل الدخول:</p>${codeBox(code)}
-      <p>صالح لمدة <b>${minutes} دقائق</b> ولمرة واحدة. لا تشارك هذا الرمز مع أي شخص — فريق المنصة لن يطلبه منك أبداً.</p>`),
+    subject: `رمز الدخول ${code} — ${company}`,
+    text: `رمز الدخول إلى ${company}: ${code} — أو اضغط رابط الدخول: ${loginUrl} (صالحان ${minutes} دقائق ولمرة واحدة). لا تشاركهما مع أحد.`,
+    html: layout('الدخول إلى المنصة', `<p>مرحباً ${esc(name)}،</p><p>طُلب الدخول إلى منصة <b>${esc(company)}</b> بهذا البريد.</p>
+      ${button(loginUrl, 'الدخول الآن بضغطة واحدة')}
+      <p style="text-align:center;color:#667085;font-size:13px">أو أدخل رمز التحقق في صفحة الدخول:</p>${codeBox(code)}
+      <p>الرابط والرمز صالحان لمدة <b>${minutes} دقائق</b> ولمرة واحدة. إن لم تطلب الدخول فتجاهل هذه الرسالة — لا يمكن لأحد الدخول بدون هذا البريد.</p>`),
+  }),
+
+  /** Sign-in requested for a company that cannot sign in yet (under review, suspended…). */
+  accountStatus: (to: string, company: string, message: string): Email => ({
+    to,
+    subject: `حالة حساب ${company} — DarHaccp`,
+    text: `طُلب الدخول إلى ${company}: ${message}`,
+    html: layout('حالة الحساب', `<p>طُلب الدخول إلى <b>${esc(company)}</b> بهذا البريد.</p><p>${esc(message)}</p>`),
   }),
 
   registrationOtp: (to: string, company: string, code: string, minutes: number): Email => ({
@@ -105,19 +116,16 @@ export const emails = {
       ${button(`${env.APP_URL}/platform`, 'فتح لوحة إدارة المنصة')}`),
   }),
 
-  approved: (to: string, t: { name: string; code: string; account_no: string }, activationUrl: string, loginUrl: string): Email => ({
+  approved: (to: string, t: { name: string; code: string; account_no: string }, loginUrl: string): Email => ({
     to,
     subject: `تمت الموافقة على اشتراك ${t.name} — DarHaccp`,
-    text: `تمت الموافقة على اشتراككم. 1) فعّل حساب المدير (صالح 72 ساعة): ${activationUrl} 2) رابط الدخول الخاص بشركتكم: ${loginUrl} — رمز الشركة: ${t.code} — الرقم التعريفي: ${t.account_no}`,
+    text: `تمت الموافقة على اشتراككم. رابط الدخول الخاص بشركتكم: ${loginUrl} — أدخلوا بريدكم الرسمي وسيصلكم رابط ورمز الدخول. رمز الشركة: ${t.code} — الرقم التعريفي: ${t.account_no}`,
     html: layout('تمت الموافقة على الاشتراك', `<p>يسعدنا إبلاغكم بالموافقة على اشتراك <b>${esc(t.name)}</b> في منصة DarHaccp.</p>
-      <p><b>الخطوة 1 —</b> عيّنوا كلمة مرور مدير الحساب (الرابط صالح 72 ساعة):</p>
-      ${button(activationUrl, 'تفعيل حساب المدير')}
-      <p><b>الخطوة 2 —</b> احفظوا <b>رابط الدخول الخاص بشركتكم</b> (أضيفوه للمفضلة)، ولا حاجة لحفظ رمز الشركة:</p>
+      <p>للدخول افتحوا رابط شركتكم وأدخلوا هذا البريد الرسمي فقط، وسيصلكم <b>رابط دخول ورمز تحقق</b> فوراً — لا حاجة لكلمة مرور ولا لحفظ رمز الشركة.</p>
       ${button(loginUrl, 'الدخول إلى منصة شركتكم')}
       <p style="direction:ltr;text-align:center;font-size:13px;color:#667085">${esc(loginUrl)}</p>
       <table cellpadding="6" style="font-size:14px;color:#344054"><tr><td>رمز الشركة</td><td dir="ltr"><b>${esc(t.code)}</b></td></tr>
-      <tr><td>الرقم التعريفي</td><td><b>${esc(t.account_no)}</b></td></tr></table>
-      <p style="font-size:13px;color:#667085">نسيتم الرابط؟ من صفحة الدخول اختاروا «أرسل لي رابط الدخول» وسيصل إلى هذا البريد.</p>`),
+      <tr><td>الرقم التعريفي</td><td><b>${esc(t.account_no)}</b></td></tr></table>`),
   }),
 
   loginLink: (to: string, name: string, t: { name: string; code: string; account_no: string }, loginUrl: string): Email => ({

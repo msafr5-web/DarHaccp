@@ -80,7 +80,7 @@ export default function TenantReviewScreen() {
 
         {t.status === 'PENDING_REVIEW' ? (
           <>
-            <Button title="✅ اعتماد الشركة وإرسال رابط التفعيل" loading={busy}
+            <Button title="✅ اعتماد الشركة وإرسال رابط الدخول" loading={busy}
               onPress={() => act('approve', { notes: notes.trim() || undefined }, 'تم الاعتماد وأُرسل البريد للشركة')} />
             <Button title="✖ رفض الطلب" variant="danger" loading={busy} disabled={notes.trim().length < 5}
               onPress={() => act('reject', { reason: notes.trim() }, 'تم رفض الطلب وإبلاغ الشركة')} />
@@ -95,8 +95,8 @@ export default function TenantReviewScreen() {
         ) : null}
         {t.status === 'ACTIVE' ? (
           <>
-            <Button title="✉️ إعادة إرسال رابط تفعيل المدير" variant="outline" loading={busy}
-              onPress={() => act('resend-activation', {}, 'تم إرسال رابط التفعيل')} />
+            <Button title="✉️ إعادة إرسال رابط الدخول للشركة" variant="outline" loading={busy}
+              onPress={() => act('resend-activation', {}, 'تم إرسال رابط الدخول إلى بريد الشركة')} />
             <Button title="⏸ إيقاف الحساب" variant="danger" loading={busy} disabled={notes.trim().length < 5}
               onPress={() => act('suspend', { reason: notes.trim() }, 'تم إيقاف الحساب — تم قطع جلسات الشركة')} />
           </>

@@ -10,9 +10,9 @@ import { LoginChallenge, useAuth } from '@/context/AuthContext';
 import { colors } from '@/theme';
 
 /**
- * Sign-in: official e-mail + password, then the 6-digit code e-mailed on every login.
- * No company code to remember — the e-mail is unique on the platform. When opened from the
- * company's personal login link (/c/<code>), the page is branded with the company name.
+ * Password-less sign-in: type the official e-mail → one message arrives with a one-click
+ * login link AND a 6-digit code. Click the link, or type the code here.
+ * When opened from the company's link (/c/<code>), the page is branded with the company name.
  */
 export default function LoginScreen() {
   const params = useLocalSearchParams<{ code?: string; email?: string }>();
@@ -20,14 +20,13 @@ export default function LoginScreen() {
   const [server, recheck] = useServerHealth();
   const [company, setCompany] = useState<RememberedCompany | null>(null);
   const [email, setEmail] = useState(params.email ?? '');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [challenge, setChallenge] = useState<LoginChallenge | null>(null);
   const [otp, setOtp] = useState('');
   const [cooldown, setCooldown] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 
   useEffect(() => {
     rememberedCompany().then((c) => {
@@ -55,10 +54,10 @@ export default function LoginScreen() {
     }
   };
 
-  const submitPassword = () =>
+  const sendLink = () =>
     run(async () => {
-      const c = await startLogin(email, password, company?.code);
-      setChallenge(c);
+      if (!emailOk) return;
+      setChallenge(await startLogin(email, company?.code));
       setOtp('');
       setCooldown(60);
     });
@@ -73,7 +72,7 @@ export default function LoginScreen() {
       {!challenge ? (
         <AuthCard
           title={company ? `الدخول إلى ${company.name}` : 'تسجيل الدخول'}
-          subtitle="أدخل بريدك الرسمي وكلمة المرور — سيصلك رمز تحقق على بريدك"
+          subtitle="أدخل بريدك الرسمي — سيصلك فوراً رابط الدخول ورمز التحقق، بدون كلمة مرور"
         >
           {banner ? <Notice text={`🔌 ${banner}`} /> : null}
           {company ? (
@@ -85,44 +84,37 @@ export default function LoginScreen() {
             </View>
           ) : null}
           <AuthField label="البريد الإلكتروني الرسمي" icon="✉️" value={email} onChangeText={setEmail} autoCapitalize="none"
-            autoComplete="email" keyboardType="email-address" placeholder="name@company.sa" />
-          <AuthField label="كلمة المرور" icon="🔒" value={password} onChangeText={setPassword} secureTextEntry={!showPassword}
-            autoComplete="password" placeholder="••••••••" onSubmitEditing={submitPassword}
-            right={<Pressable onPress={() => setShowPassword((v) => !v)} hitSlop={10}>
-              <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 13 }}>{showPassword ? 'إخفاء' : 'إظهار'}</Text>
-            </Pressable>} />
+            autoComplete="email" keyboardType="email-address" placeholder="name@company.sa" onSubmitEditing={sendLink}
+            returnKeyType="send" />
           {error ? <Notice text={`⚠️ ${error}`} /> : null}
-          <Button title="متابعة" onPress={submitPassword} loading={busy} disabled={!email.trim() || !password} />
-          <View style={[styles.row, { justifyContent: 'space-between', flexWrap: 'wrap', marginTop: 4 }]}>
-            <Pressable onPress={() => router.push('/forgot')}><Text style={authStyles.link}>نسيت كلمة المرور؟</Text></Pressable>
-            <Pressable onPress={() => router.push('/login-link')}><Text style={authStyles.link}>أرسل لي رابط الدخول</Text></Pressable>
-          </View>
-          <View style={{ height: 1, backgroundColor: '#EAECF0', marginVertical: 10 }} />
+          <Button title="إرسال رابط ورمز الدخول" onPress={sendLink} loading={busy} disabled={!emailOk} />
+          <View style={{ height: 1, backgroundColor: '#EAECF0', marginVertical: 12 }} />
           <Pressable onPress={() => router.push('/register')}>
             <Text style={[authStyles.link, { textAlign: 'center' }]}>شركة جديدة؟ سجّل اشتراكك الآن ←</Text>
           </Pressable>
         </AuthCard>
       ) : (
-        <AuthCard title="رمز التحقق" subtitle={`أرسلنا رمزاً من 6 أرقام إلى ${challenge.email} — صالح 5 دقائق`}>
-          <AuthField label="الرمز" icon="🔑" value={otp} onChangeText={(v) => setOtp(v.replace(/\D/g, '').slice(0, 6))}
+        <AuthCard title="📬 تحقق من بريدك" subtitle={`إذا كان ${challenge.email} مسجلاً لدينا فقد أرسلنا إليه رسالة الدخول`}>
+          <Notice tone="info" text="اضغط زر «الدخول الآن» في الرسالة للدخول مباشرة، أو اكتب رمز التحقق المكوّن من 6 أرقام هنا. الرابط والرمز صالحان 5 دقائق ولمرة واحدة." />
+          <AuthField label="رمز التحقق" icon="🔑" value={otp} onChangeText={(v) => setOtp(v.replace(/\D/g, '').slice(0, 6))}
             keyboardType="number-pad" autoComplete="one-time-code" textContentType="oneTimeCode" maxLength={6}
             placeholder="••••••" onSubmitEditing={() => otp.length === 6 && submitOtp()} style={authStyles.otp} />
           {error ? <Notice text={`⚠️ ${error}`} /> : null}
           {info ? <Notice text={info} tone="success" /> : null}
           <Button title="تأكيد الدخول" onPress={submitOtp} loading={busy} disabled={otp.length !== 6} />
           <Button
-            title={cooldown > 0 ? `إعادة إرسال الرمز (${cooldown})` : 'إعادة إرسال الرمز'}
+            title={cooldown > 0 ? `إعادة الإرسال (${cooldown})` : 'إعادة إرسال الرسالة'}
             variant="outline"
             disabled={cooldown > 0 || busy}
             onPress={() => run(async () => {
               const r = await resendOtp(challenge.challengeId);
               setCooldown(60);
-              setInfo(`تم إرسال رمز جديد إلى ${r.email}`);
+              setInfo(`تم إرسال رسالة جديدة إلى ${r.email}`);
             })}
           />
-          <Text style={[styles.hint, { textAlign: 'center' }]}>لم يصل الرمز؟ تحقق من مجلد Spam / الرسائل غير المرغوبة</Text>
+          <Text style={[styles.hint, { textAlign: 'center' }]}>لم تصل الرسالة؟ تحقق من مجلد Spam / الرسائل غير المرغوبة</Text>
           <Pressable onPress={() => { setChallenge(null); setError(null); setOtp(''); }}>
-            <Text style={authStyles.link}>→ العودة وتغيير البيانات</Text>
+            <Text style={authStyles.link}>→ تغيير البريد</Text>
           </Pressable>
         </AuthCard>
       )}

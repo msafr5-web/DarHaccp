@@ -17,7 +17,10 @@ interface AuthState {
   user: User | null;
   loading: boolean;
   /** Step 1: company code + e-mail + password → an OTP is e-mailed. */
-  startLogin: (email: string, password: string, companyCode?: string) => Promise<LoginChallenge>;
+  /** Sends ONE e-mail with a login link + 6-digit code (same answer whether or not the e-mail exists). */
+  startLogin: (email: string, companyCode?: string) => Promise<LoginChallenge>;
+  /** Signs in from the one-click link of the e-mail. */
+  verifyMagicLink: (challengeId: string, token: string) => Promise<void>;
   /** Step 2: the e-mailed 6-digit code → session. */
   verifyOtp: (challengeId: string, code: string) => Promise<void>;
   resendOtp: (challengeId: string) => Promise<{ email: string }>;
@@ -86,18 +89,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => setUnauthorizedHandler(null);
   }, [clearSession]);
 
-  const startLogin = useCallback(async (email: string, password: string, companyCode?: string) => {
+  const startLogin = useCallback(async (email: string, companyCode?: string) => {
     return api<LoginChallenge>('/auth/login', {
       method: 'POST',
-      body: { email: email.trim(), password, ...(companyCode ? { companyCode } : {}) },
+      body: { email: email.trim(), ...(companyCode ? { companyCode } : {}) },
     });
   }, []);
 
-  const verifyOtp = useCallback(async (challengeId: string, code: string) => {
-    const { token, user: u, tenant } = await api<{ token: string; user: User; tenant: User['tenant'] }>('/auth/verify-otp', {
-      method: 'POST',
-      body: { challengeId, code: code.trim() },
-    });
+  const completeSignIn = useCallback(async (path: string, body: object) => {
+    const { token, user: u, tenant } = await api<{ token: string; user: User; tenant: User['tenant'] }>(path, { method: 'POST', body });
     await tokenStorage.set(TOKEN_KEY, token);
     // Remember the company on this device for the branded sign-in page next time.
     if (tenant && u.role !== 'PLATFORM_ADMIN') await rememberCompany({ name: tenant.name, code: tenant.code });
@@ -105,6 +105,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser({ ...u, tenant });
     void registerForPushNotifications();
   }, []);
+
+  const verifyOtp = useCallback(
+    (challengeId: string, code: string) => completeSignIn('/auth/verify-otp', { challengeId, code: code.trim() }),
+    [completeSignIn],
+  );
+  const verifyMagicLink = useCallback(
+    (challengeId: string, token: string) => completeSignIn('/auth/magic-link', { challengeId, token }),
+    [completeSignIn],
+  );
 
   const resendOtp = useCallback(
     (challengeId: string) => api<{ email: string }>('/auth/resend-otp', { method: 'POST', body: { challengeId } }),
@@ -123,13 +132,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       startLogin,
       verifyOtp,
+      verifyMagicLink,
       resendOtp,
       lastCompanyCode,
       signOut,
       isPlatform: user?.role === 'PLATFORM_ADMIN',
       can: (p) => !!user && (UI_PERMISSIONS[p] as Role[]).includes(user.role),
     }),
-    [user, loading, startLogin, verifyOtp, resendOtp, lastCompanyCode, signOut],
+    [user, loading, startLogin, verifyOtp, verifyMagicLink, resendOtp, lastCompanyCode, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

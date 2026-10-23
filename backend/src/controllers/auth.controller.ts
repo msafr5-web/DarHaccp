@@ -1,21 +1,19 @@
+import { randomUUID } from 'node:crypto';
 import type { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { query, runAsSystem, runInTenant, withTransaction } from '../config/database';
+import { env } from '../config/env';
 import { signAccessToken } from '../middlewares/auth';
 import { insertAuditEvent } from '../models/audit.model';
-import { findUserById, findUserForLogin } from '../models/user.model';
+import { findUserById } from '../models/user.model';
 import { emails, sendEmail } from '../services/email.service';
-import { createChallenge, maskEmail, OTP_TTL_MINUTES, resendChallenge, verifyChallenge } from '../services/otp.service';
+import { createChallenge, maskEmail, OtpChallenge, OTP_TTL_MINUTES, recentChallenges, resendChallenge, verifyChallenge, verifyMagicLink } from '../services/otp.service';
 import { companyLoginUrl, consumePasswordToken, issuePasswordToken } from '../services/tenant.service';
 import { AppError } from '../utils/AppError';
 import { dbContext, ok, requireUser } from '../utils/http';
 import { uuid } from '../utils/schemas';
 
-const MAX_FAILED_ATTEMPTS = 5;
-const LOCK_MINUTES = 15;
-// Used when the e-mail is unknown so response time does not reveal which accounts exist.
-const DUMMY_HASH = bcrypt.hashSync('timing-attack-mitigation', 12);
 
 export const passwordPolicy = z
   .string()
@@ -28,11 +26,12 @@ export const passwordPolicy = z
 /** Optional: the e-mail alone identifies the account (it is unique on the whole platform). */
 const companyCode = z.string().trim().min(4).max(60).optional();
 
+/** Password-less sign-in: the official e-mail is the identity (unique on the whole platform). */
 export const loginSchema = z.object({
   companyCode,
   email: z.email().max(255),
-  password: z.string().min(1).max(128),
 });
+export const magicLinkSchema = z.object({ challengeId: uuid, token: z.string().min(20).max(100) });
 export const verifyOtpSchema = z.object({ challengeId: uuid, code: z.string().trim().regex(/^\d{6}$/, 'الرمز 6 أرقام') });
 export const resendOtpSchema = z.object({ challengeId: uuid });
 export const activateSchema = z.object({ token: z.string().min(20).max(200), password: passwordPolicy });
@@ -47,7 +46,7 @@ interface AttemptInfo {
   userId?: string | null;
   companyCode?: string;
   email?: string;
-  stage: 'PASSWORD' | 'OTP' | 'OTP_RESEND';
+  stage: 'EMAIL' | 'OTP' | 'MAGIC_LINK' | 'OTP_RESEND' | 'PASSWORD';
   success: boolean;
   reason?: string;
 }
@@ -70,93 +69,96 @@ const TENANT_STATUS_MESSAGES: Record<string, string> = {
   SUSPENDED: 'حساب الشركة موقوف — تواصل مع إدارة المنصة',
 };
 
+const FLOOD_COOLDOWN_SECONDS = 60;
+const FLOOD_MAX_PER_15_MIN = 10;
+
+/** One-click login link carried by the e-mail (opens /magic and signs in). */
+const magicLoginUrl = (challengeId: string, token: string) =>
+  `${env.APP_URL.replace(/\/+$/, '')}/magic?c=${challengeId}&t=${token}`;
+
 /**
- * Step 1 — company code + e-mail + password. On success no session is created yet:
- * a 6-digit code is e-mailed and must be confirmed with /auth/verify-otp.
+ * Step 1 — the e-mail only. When it belongs to an active account, ONE message is sent with a
+ * one-click login link and a 6-digit code (5 minutes, single use).
+ * The answer is identical whether or not the e-mail exists, so accounts cannot be discovered;
+ * the outcome is in the login_attempts log. A company that cannot sign in yet (under review,
+ * suspended) is told why by e-mail. Anti-flooding: one message per 60 s, five per 15 min.
  */
 export async function login(req: Request, res: Response) {
-  const { companyCode: code, email, password } = req.valid.body as z.infer<typeof loginSchema>;
+  const { companyCode: code, email } = req.valid.body as z.infer<typeof loginSchema>;
 
-  const result = await runAsSystem(async () => {
-    // Company from the code (company login link) or, without a code, from the e-mail itself.
-    const { rows: tenants } = code
-      ? await query<{ id: number; status: string; name: string }>(
-          `SELECT id, status, name FROM tenants WHERE LOWER(code) = LOWER($1) ORDER BY id DESC LIMIT 1`,
-          [code],
-        )
-      : await query<{ id: number; status: string; name: string }>(
-          `SELECT t.id, t.status, t.name FROM users u JOIN tenants t ON t.id = u.tenant_id
-            WHERE LOWER(u.email) = LOWER($1) AND u.employee_no <> 'SYS-IOT'
-           UNION ALL
-           SELECT t.id, t.status, t.name FROM tenants t
-            WHERE LOWER(t.email) = LOWER($1) AND NOT EXISTS (SELECT 1 FROM users u WHERE u.tenant_id = t.id)
-           LIMIT 1`,
+  const challengeId = await runAsSystem(async () => {
+    const attempt = (a: Omit<AttemptInfo, 'stage' | 'email' | 'companyCode'>) =>
+      recordAttempt(req, { ...a, email, companyCode: code, stage: 'EMAIL' });
+
+    const { rows: users } = await query<{
+      id: string; full_name: string; email: string; is_active: boolean; tenant_id: number;
+      tenant_status: string; tenant_name: string;
+    }>(
+      `SELECT u.id, u.full_name, u.email, u.is_active, u.tenant_id, t.status AS tenant_status, t.name AS tenant_name
+         FROM users u JOIN tenants t ON t.id = u.tenant_id
+        WHERE LOWER(u.email) = LOWER($1) AND u.employee_no <> 'SYS-IOT'
+          AND ($2::text IS NULL OR LOWER(t.code) = LOWER($2))`,
+      [email, code ?? null],
+    );
+    const user = users[0];
+
+    const recent = await recentChallenges(email);
+    const coolingDown = !!recent.last_at && Date.now() - new Date(recent.last_at).getTime() < FLOOD_COOLDOWN_SECONDS * 1000;
+    if (coolingDown && recent.last_id) {
+      await attempt({ tenantId: user?.tenant_id, userId: user?.id, success: false, reason: 'EMAIL_COOLDOWN' });
+      return recent.last_id; // the previous message is still valid
+    }
+    if (recent.n >= FLOOD_MAX_PER_15_MIN) {
+      await attempt({ tenantId: user?.tenant_id, userId: user?.id, success: false, reason: 'EMAIL_THROTTLED' });
+      return randomUUID();
+    }
+
+    // A company that cannot sign in yet (under review, suspended…): explain why by e-mail.
+    const { rows: tenants } = user
+      ? { rows: [] as { id: number; name: string; status: string; email: string }[] }
+      : await query<{ id: number; name: string; status: string; email: string }>(
+          `SELECT id, name, status, email FROM tenants WHERE LOWER(email) = LOWER($1) AND NOT is_platform`,
           [email],
         );
-    const tenant = tenants[0];
-    const fail = async (reason: string, userId?: string) => {
-      await recordAttempt(req, { tenantId: tenant?.id, userId, companyCode: code, email, stage: 'PASSWORD', success: false, reason });
-    };
-
-    if (tenant && TENANT_STATUS_MESSAGES[tenant.status]) {
-      await fail(`TENANT_${tenant.status}`);
-      throw new AppError(403, `TENANT_${tenant.status}`, TENANT_STATUS_MESSAGES[tenant.status]!);
+    const blocked = user && user.tenant_status !== 'ACTIVE'
+      ? { id: user.tenant_id, name: user.tenant_name, status: user.tenant_status, email: user.email }
+      : tenants[0] && tenants[0].status !== 'ACTIVE' ? tenants[0] : undefined;
+    if (blocked) {
+      const message = TENANT_STATUS_MESSAGES[blocked.status] ?? 'لا يمكن الدخول حالياً — تواصل مع إدارة المنصة';
+      // A code-less challenge keeps the same anti-flooding rules for these notices.
+      await createChallenge({ purpose: 'LOGIN', tenantId: blocked.id, email: blocked.email, ip: req.ip });
+      await sendEmail(emails.accountStatus(blocked.email, blocked.name, message)).catch(() => undefined);
+      await attempt({ tenantId: blocked.id, userId: user?.id, success: false, reason: `TENANT_${blocked.status}` });
+      return randomUUID();
     }
 
-    const user = tenant ? await findUserForLogin(tenant.id, email) : undefined;
-    if (user?.locked_until && new Date(user.locked_until) > new Date()) {
-      await fail('ACCOUNT_LOCKED', user.id);
-      throw new AppError(423, 'ACCOUNT_LOCKED', `تم قفل الحساب مؤقتاً بسبب محاولات فاشلة، حاول بعد ${LOCK_MINUTES} دقيقة`);
+    if (!user || !user.is_active) {
+      await attempt({ tenantId: user?.tenant_id, userId: user?.id, success: false, reason: user ? 'USER_INACTIVE' : 'UNKNOWN_EMAIL' });
+      return randomUUID();
     }
 
-    const valid = await bcrypt.compare(password, user?.password_hash ?? DUMMY_HASH);
-    if (!tenant || !user || !valid || !user.is_active) {
-      if (user) {
-        await query(
-          `UPDATE users SET failed_login_attempts = failed_login_attempts + 1,
-                  locked_until = CASE WHEN failed_login_attempts + 1 >= $2 THEN now() + make_interval(mins => $3) END
-            WHERE id = $1`,
-          [user.id, MAX_FAILED_ATTEMPTS, LOCK_MINUTES],
-        );
-      }
-      await fail(!tenant ? 'UNKNOWN_COMPANY' : !user ? 'UNKNOWN_USER' : !user.is_active ? 'USER_INACTIVE' : 'WRONG_PASSWORD', user?.id);
-      throw new AppError(401, 'INVALID_CREDENTIALS', 'رمز الشركة أو البريد أو كلمة المرور غير صحيحة');
-    }
-
-    const otp = await createChallenge({ purpose: 'LOGIN', tenantId: tenant.id, userId: user.id, email: user.email, ip: req.ip });
-    await sendEmail(emails.loginOtp(user.email, user.full_name, otp.code, OTP_TTL_MINUTES));
-    await recordAttempt(req, { tenantId: tenant.id, userId: user.id, companyCode: code, email, stage: 'PASSWORD', success: true });
-    return { challengeId: otp.id, email: maskEmail(user.email), expiresInSeconds: OTP_TTL_MINUTES * 60 };
+    const otp = await createChallenge({
+      purpose: 'LOGIN', tenantId: user.tenant_id, userId: user.id, email: user.email, ip: req.ip, withMagicLink: true,
+    });
+    await sendEmail(emails.loginCode(user.email, user.full_name, user.tenant_name, otp.code, magicLoginUrl(otp.id, otp.magic!), OTP_TTL_MINUTES));
+    await attempt({ tenantId: user.tenant_id, userId: user.id, success: true });
+    return otp.id;
   });
 
-  return ok(res, { otpRequired: true, ...result });
+  return ok(res, { otpRequired: true, challengeId, email: maskEmail(email), expiresInSeconds: OTP_TTL_MINUTES * 60 });
 }
 
-/** Step 2 — the e-mailed code. Issues the session token. */
-export async function verifyOtp(req: Request, res: Response) {
-  const { challengeId, code } = req.valid.body as z.infer<typeof verifyOtpSchema>;
-
-  const challenge = await runAsSystem(async () => {
-    const { rows } = await query<{ tenant_id: number; user_id: string | null; email: string }>(
-      `SELECT tenant_id, user_id, email FROM otp_challenges WHERE id = $1`,
-      [challengeId],
-    );
-    try {
-      return await verifyChallenge(challengeId, 'LOGIN', code);
-    } catch (err) {
-      await recordAttempt(req, { tenantId: rows[0]?.tenant_id, userId: rows[0]?.user_id, email: rows[0]?.email, stage: 'OTP', success: false,
-        reason: err instanceof AppError ? err.code : 'ERROR' });
-      throw err;
-    }
-  });
-
+/** Creates the session once the code or the link has been verified. */
+async function issueSession(req: Request, res: Response, challenge: OtpChallenge, stage: 'OTP' | 'MAGIC_LINK') {
   return runInTenant(challenge.tenant_id, async () => {
     const user = challenge.user_id ? await findUserById(challenge.user_id) : undefined;
     if (!user || !user.is_active) throw AppError.unauthorized('الحساب غير نشط');
     await query(`UPDATE users SET failed_login_attempts = 0, locked_until = NULL, last_login_at = now() WHERE id = $1`, [user.id]);
-    await recordAttempt(req, { tenantId: challenge.tenant_id, userId: user.id, email: user.email, stage: 'OTP', success: true });
-    await insertAuditEvent({ userId: user.id, action: 'LOGIN', entity: 'auth', entityId: user.id, ip: req.ip,
-      userAgent: req.get('user-agent'), requestId: req.requestId });
+    await recordAttempt(req, { tenantId: challenge.tenant_id, userId: user.id, email: user.email, stage, success: true });
+    await insertAuditEvent({
+      userId: user.id, action: 'LOGIN', entity: 'auth', entityId: user.id, ip: req.ip,
+      userAgent: req.get('user-agent'), requestId: req.requestId, data: { method: stage },
+    });
     const { rows: t } = await query<{ id: number; account_no: string; code: string; name: string }>(
       'SELECT id, account_no, code, name FROM tenants WHERE id = $1',
       [challenge.tenant_id],
@@ -165,25 +167,67 @@ export async function verifyOtp(req: Request, res: Response) {
   });
 }
 
+/** Runs a code/link verification, recording failures in the login-attempt log. */
+async function verifyWith(req: Request, challengeId: string, stage: 'OTP' | 'MAGIC_LINK', verify: () => Promise<OtpChallenge>) {
+  return runAsSystem(async () => {
+    const { rows } = await query<{ tenant_id: number; user_id: string | null; email: string }>(
+      `SELECT tenant_id, user_id, email FROM otp_challenges WHERE id = $1`,
+      [challengeId],
+    );
+    try {
+      const challenge = await verify();
+      if (!challenge.user_id) throw new AppError(400, 'OTP_INVALID_SESSION', 'انتهت جلسة التحقق، ابدأ من جديد');
+      return challenge;
+    } catch (err) {
+      await recordAttempt(req, {
+        tenantId: rows[0]?.tenant_id, userId: rows[0]?.user_id, email: rows[0]?.email, stage, success: false,
+        reason: err instanceof AppError ? err.code : 'ERROR',
+      });
+      throw err;
+    }
+  });
+}
+
+/** Step 2a — the 6-digit code typed on the sign-in page. */
+export async function verifyOtp(req: Request, res: Response) {
+  const { challengeId, code } = req.valid.body as z.infer<typeof verifyOtpSchema>;
+  const challenge = await verifyWith(req, challengeId, 'OTP', () => verifyChallenge(challengeId, 'LOGIN', code));
+  return issueSession(req, res, challenge, 'OTP');
+}
+
+/** Step 2b — the one-click link from the e-mail. */
+export async function verifyMagicLinkLogin(req: Request, res: Response) {
+  const { challengeId, token } = req.valid.body as z.infer<typeof magicLinkSchema>;
+  const challenge = await verifyWith(req, challengeId, 'MAGIC_LINK', () => verifyMagicLink(challengeId, token));
+  return issueSession(req, res, challenge, 'MAGIC_LINK');
+}
+
 export async function resendOtp(req: Request, res: Response) {
   const { challengeId } = req.valid.body as z.infer<typeof resendOtpSchema>;
   const result = await runAsSystem(async () => {
     let resent: Awaited<ReturnType<typeof resendChallenge>>;
     try {
       resent = await resendChallenge(challengeId, 'LOGIN');
+      if (!resent.challenge.user_id) throw new AppError(400, 'OTP_INVALID_SESSION', 'انتهت جلسة التحقق، ابدأ من جديد');
     } catch (err) {
-      // Refused resends (cool-down, limits) are attempts too.
+      // Refused resends (cool-down, limits, unknown session) are attempts too.
       const { rows } = await query<{ tenant_id: number; user_id: string | null; email: string }>(
         'SELECT tenant_id, user_id, email FROM otp_challenges WHERE id = $1',
         [challengeId],
       );
-      await recordAttempt(req, { tenantId: rows[0]?.tenant_id, userId: rows[0]?.user_id, email: rows[0]?.email, stage: 'OTP_RESEND',
-        success: false, reason: err instanceof AppError ? err.code : 'ERROR' });
+      await recordAttempt(req, {
+        tenantId: rows[0]?.tenant_id, userId: rows[0]?.user_id, email: rows[0]?.email, stage: 'OTP_RESEND',
+        success: false, reason: err instanceof AppError ? err.code : 'ERROR',
+      });
       throw err;
     }
-    const { challenge, code } = resent;
-    const { rows } = await query<{ full_name: string }>('SELECT full_name FROM users WHERE id = $1', [challenge.user_id]);
-    await sendEmail(emails.loginOtp(challenge.email, rows[0]?.full_name ?? '', code, OTP_TTL_MINUTES));
+    const { challenge, code, magic } = resent;
+    const { rows } = await query<{ full_name: string; tenant_name: string }>(
+      'SELECT u.full_name, t.name AS tenant_name FROM users u JOIN tenants t ON t.id = u.tenant_id WHERE u.id = $1',
+      [challenge.user_id],
+    );
+    await sendEmail(emails.loginCode(challenge.email, rows[0]?.full_name ?? '', rows[0]?.tenant_name ?? '', code,
+      magicLoginUrl(challenge.id, magic!), OTP_TTL_MINUTES));
     await recordAttempt(req, { tenantId: challenge.tenant_id, userId: challenge.user_id, email: challenge.email, stage: 'OTP_RESEND', success: true });
     return { email: maskEmail(challenge.email), expiresInSeconds: OTP_TTL_MINUTES * 60 };
   });

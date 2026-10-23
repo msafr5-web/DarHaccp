@@ -32,7 +32,7 @@ export interface LoginAttempt {
   company_code: string | null;
   user_name: string | null;
   email: string | null;
-  stage: 'PASSWORD' | 'OTP' | 'OTP_RESEND';
+  stage: 'EMAIL' | 'MAGIC_LINK' | 'OTP' | 'OTP_RESEND' | 'PASSWORD';
   success: boolean;
   failure_reason: string | null;
   ip_address: string | null;
