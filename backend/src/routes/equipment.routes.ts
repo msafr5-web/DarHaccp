@@ -10,6 +10,7 @@ router.get('/', authorize('equipment:read'), validate({ query: equipment.listEqu
 router.get('/:id', authorize('equipment:read'), validate({ params: idParams }), equipment.get);
 router.post('/', authorize('equipment:manage'), validate({ body: equipment.equipmentSchema }), equipment.create);
 router.patch('/:id', authorize('equipment:manage'), validate({ params: idParams, body: equipment.equipmentUpdateSchema }), equipment.update);
+router.get('/:id/maintenance', authorize('equipment:read'), validate({ params: idParams }), equipment.maintenanceHistory);
 router.post('/:id/maintenance', authorize('equipment:manage'), validate({ params: idParams, body: equipment.maintenanceSchema }), equipment.addMaintenance);
 
 export default router;

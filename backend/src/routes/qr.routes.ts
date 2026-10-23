@@ -8,6 +8,7 @@ const router = Router();
 // Mobile app: scanned payload -> digital form to fill.
 router.post('/resolve', authorize('record:create'), validate({ body: qr.resolveSchema }), qr.resolve);
 
+router.post('/labels-data', authorize('qr:manage'), validate({ body: qr.labelsDataSchema }), qr.labelsData);
 router.get('/labels', authorize('qr:manage'), validate({ query: qr.labelsQuery }), qr.labels);
 router.get('/:target/:id/image', authorize('qr:manage'), validate({ params: qr.qrTargetParams, query: qr.imageQuery }), qr.image);
 router.post('/:target/:id/rotate', authorize('qr:manage'), validate({ params: qr.qrTargetParams }), qr.rotate);

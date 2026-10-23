@@ -77,6 +77,7 @@ export interface RecordFilters {
   status?: 'PASS' | 'FAIL';
   ccpId?: string;
   templateId?: string;
+  equipmentId?: string;
   from?: string;
   to?: string;
   limit: number;
@@ -89,6 +90,7 @@ export async function listRecords(f: RecordFilters) {
   if (f.status) where.push(`r.status = $${params.push(f.status)}`);
   if (f.ccpId) where.push(`r.ccp_id = $${params.push(f.ccpId)}`);
   if (f.templateId) where.push(`r.template_id = $${params.push(f.templateId)}`);
+  if (f.equipmentId) where.push(`r.equipment_id = $${params.push(f.equipmentId)}`);
   if (f.from) where.push(`r.recorded_at >= $${params.push(f.from)}`);
   if (f.to) where.push(`r.recorded_at < $${params.push(f.to)}`);
 

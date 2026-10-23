@@ -224,6 +224,7 @@ export const listRecordsQuery = pagination.extend({
   status: z.enum(['PASS', 'FAIL']).optional(),
   ccpId: uuid.optional(),
   templateId: uuid.optional(),
+  equipmentId: uuid.optional(),
   from: isoDateTime.optional(),
   to: isoDateTime.optional(),
 });

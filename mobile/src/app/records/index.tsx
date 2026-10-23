@@ -11,13 +11,16 @@ const DEPARTMENTS: Department[] = ['SUPPORT', 'HOT', 'COLD', 'SWEETS'];
 
 /** Filled forms of a department, newest first (amended records are flagged). */
 export default function RecordsScreen() {
-  const params = useLocalSearchParams<{ templateId?: string; department?: Department }>();
+  const params = useLocalSearchParams<{ templateId?: string; department?: Department; equipmentId?: string; title?: string }>();
   const { user } = useAuth();
   const [department, setDepartment] = useState<Department>(user?.department_code ?? params.department ?? 'SUPPORT');
   const [status, setStatus] = useState<'ALL' | 'PASS' | 'FAIL'>('ALL');
   const [templateId, setTemplateId] = useState<string>(params.templateId ?? 'ALL');
   const { data: templates } = useApi<FormTemplateSummary[]>('/haccp/templates');
-  const q = new URLSearchParams({ pageSize: '100', ...(status !== 'ALL' ? { status } : {}), ...(templateId !== 'ALL' ? { templateId } : {}) });
+  const q = new URLSearchParams({
+    pageSize: '100', ...(status !== 'ALL' ? { status } : {}), ...(templateId !== 'ALL' ? { templateId } : {}),
+    ...(params.equipmentId ? { equipmentId: params.equipmentId } : {}),
+  });
   const { data, error, loading, offline, reload } = useApi<MonitoringRecord[]>(`/kitchens/${department.toLowerCase()}/records?${q}`);
   const forms = (templates ?? []).filter((t) => !t.department_code || t.department_code === department);
 
@@ -30,6 +33,7 @@ export default function RecordsScreen() {
       ListHeaderComponent={
         <View>
           <OfflineNote show={offline} />
+          {params.equipmentId ? <Text style={[styles.title, { marginBottom: 8 }]}>📟 سجلات الجهاز {params.title ?? ''}</Text> : null}
           {!user?.department_code ? (
             <Chips value={department} onChange={(d) => { setDepartment(d); setTemplateId('ALL'); }}
               options={DEPARTMENTS.map((d) => ({ value: d, label: departmentLabel[d] }))} />

@@ -67,6 +67,34 @@ export async function rotate(req: Request, res: Response) {
   return ok(res, { id, payload: buildQrPayload(token) });
 }
 
+export const labelsDataSchema = z.object({
+  target: z.enum(['templates', 'equipment']),
+  ids: z.array(z.uuid()).min(1).max(200),
+});
+
+/**
+ * QR images (data URLs) with their caption, for the app to show and print labels
+ * (the printable sheet is built client-side, so no token travels in a URL).
+ */
+export async function labelsData(req: Request, res: Response) {
+  const { target, ids } = req.valid.body as z.infer<typeof labelsDataSchema>;
+  const { rows } = await query<{ id: string; title: string; subtitle: string; location: string | null; token: string }>(
+    target === 'templates'
+      ? `SELECT t.id, t.title_ar AS title, t.code || COALESCE(' · ' || d.name_ar, '') AS subtitle, NULL AS location, t.qr_token AS token
+           FROM form_templates t LEFT JOIN departments d ON d.id = t.department_id
+          WHERE t.id = ANY($1::uuid[]) AND t.is_active ORDER BY t.code`
+      : `SELECT e.id, e.name AS title, e.code || ' · ' || d.name_ar || COALESCE(' · ' || t.title_ar, '') AS subtitle, e.location, e.qr_token AS token
+           FROM equipment e JOIN departments d ON d.id = e.department_id LEFT JOIN form_templates t ON t.id = e.form_template_id
+          WHERE e.id = ANY($1::uuid[]) AND e.is_active ORDER BY e.code`,
+    [ids],
+  );
+  const company = requireUser(req).tenantName;
+  return ok(res, await Promise.all(rows.map(async (r) => {
+    const payload = buildQrPayload(r.token);
+    return { id: r.id, title: r.title, subtitle: r.subtitle, location: r.location, company, payload, dataUrl: await renderQrDataUrl(payload) };
+  })));
+}
+
 /** Printable A4 sheet of QR labels to stick at each workstation / equipment. */
 export async function labels(req: Request, res: Response) {
   const { target } = req.valid.query as z.infer<typeof labelsQuery>;

@@ -57,3 +57,49 @@ The PRD forms (`backend/src/db/prdForms.ts`, category `WMS_GDP`):
 - `MONTHLY_CONSUMPTION`
 
 The kitchen HACCP logs are `is_default`: every new company gets them.
+
+## Equipment and data loggers (الأجهزة ومسجلات البيانات)
+
+Screen path: Modules → **📟 الأجهزة ومسجلات البيانات**.
+
+- Managed by the company admin, HACCP officer and HSE officer. Other staff see a read-only list of their own department.
+
+### Adding a device
+
+When adding a device, you set:
+
+- A number. It is fixed after creation, and appears on the label and in every record.
+- A name and a type.
+- A department and a location or zone.
+- The monitoring form its QR code opens. The form must be one this department may use.
+- The preventive-maintenance interval.
+
+### On each device
+
+- **QR label:**
+  - A preview of the label.
+  - **Print** it (A4, small or large), or **share the link**.
+  - **Fill the form now.**
+  - **Issue a new code** for a lost or damaged label. The old code stops working at once.
+- **Status:** an *out of service* device refuses to open its form.
+- **Maintenance and calibration:** a history, and the next due date is updated.
+- **Smart probe (company admin only):** issue an IoT API key, shown once.
+- **Archive:** the device leaves the lists and its code stops working. Its records are kept.
+
+### Device list
+
+- Today's readings against the minimum frequency (for example `اليوم 1 / 2`).
+- Maintenance that is due or overdue.
+- Select several devices to print their labels together, or print all.
+
+### API
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /equipment?search=&type=&department=` | Device list |
+| `POST /equipment`, `PATCH /equipment/:id` | Add / edit a device |
+| `GET /equipment/:id/maintenance`, `POST /equipment/:id/maintenance` | Maintenance history / log a maintenance |
+| `POST /qr/labels-data` | QR images for in-app display and printing |
+| `POST /qr/equipment/:id/rotate` | Issue a new QR code |
+| `POST /equipment/:id/device-key` | Issue a smart-probe key |
+| `GET /kitchens/:dept/records?equipmentId=` | Readings of one device |

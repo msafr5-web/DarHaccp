@@ -91,6 +91,8 @@ function RootNavigator() {
         <Stack.Screen name="records/index" options={{ title: 'سجلات النماذج' }} />
         <Stack.Screen name="records/[id]" options={{ title: 'السجل' }} />
         <Stack.Screen name="users/index" options={{ title: 'الموظفون والصلاحيات' }} />
+        <Stack.Screen name="equipment/index" options={{ title: 'الأجهزة ومسجلات البيانات' }} />
+        <Stack.Screen name="equipment/[id]" options={{ title: 'الجهاز' }} />
         <Stack.Screen name="template-options/[id]" options={{ title: 'القوائم المعتمدة' }} />
         <Stack.Screen name="capa/[id]" options={{ title: 'إجراء تصحيحي (CAPA)' }} />
         <Stack.Screen name="incidents/index" options={{ title: 'الحوادث وعدم المطابقة' }} />

@@ -412,3 +412,49 @@ export interface Overview {
   staff: { food_handlers: number; fit: number; expiring_soon: number; unfit: number };
   hse: { contractors_expiring: number; documents_due_review: number };
 }
+
+export type EquipmentStatus = 'OPERATIONAL' | 'UNDER_MAINTENANCE' | 'OUT_OF_SERVICE';
+
+/** Equipment / data logger with its QR code and linked monitoring form. */
+export interface Equipment {
+  id: string;
+  code: string;
+  name: string;
+  type: string;
+  department_code: Department;
+  location: string | null;
+  status: EquipmentStatus;
+  form_template_id: string | null;
+  qr_token: string;
+  maintenance_interval_days: number;
+  last_maintenance_date: string | null;
+  next_maintenance_date: string | null;
+  days_to_maintenance: number | null;
+  form_code: string | null;
+  form_title_ar: string | null;
+  min_daily_entries: number;
+  readings_today: number;
+  last_reading_at: string | null;
+  has_device_key: boolean;
+  created_at: string;
+}
+
+export interface MaintenanceLog {
+  id: string;
+  type: 'PREVENTIVE' | 'CORRECTIVE' | 'CALIBRATION';
+  description: string;
+  vendor: string | null;
+  performed_at: string;
+  next_due_date: string | null;
+  performed_by_name: string;
+}
+
+export interface QrLabel {
+  id: string;
+  title: string;
+  subtitle: string;
+  location: string | null;
+  company: string;
+  payload: string;
+  dataUrl: string;
+}

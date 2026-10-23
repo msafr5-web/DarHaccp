@@ -2,7 +2,8 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { withTransaction } from '../config/database';
 import { findDepartmentByCode } from '../models/department.model';
-import { EquipmentStatus, findEquipment, listEquipment } from '../models/equipment.model';
+import { EquipmentStatus, findEquipment, listEquipment, listMaintenance } from '../models/equipment.model';
+import { findTemplate } from '../models/haccp.model';
 import { canAccessDepartment } from '../middlewares/auth';
 import { generateQrToken } from '../services/qr.service';
 import { AppError } from '../utils/AppError';
@@ -15,11 +16,12 @@ const status = z.enum(['OPERATIONAL', 'UNDER_MAINTENANCE', 'OUT_OF_SERVICE']);
 export const listEquipmentQuery = z.object({
   department: departmentCode.optional(),
   status: status.optional(),
-  type: z.string().trim().max(40).optional(),
+  type: z.string().trim().toUpperCase().max(40).optional(),
+  search: z.string().trim().max(100).optional(),
 });
 
 export const equipmentSchema = z.object({
-  code: z.string().trim().regex(/^[A-Z0-9-]{2,30}$/),
+  code: z.string().trim().toUpperCase().regex(/^[A-Z0-9-]{2,30}$/, 'رقم الجهاز: أحرف إنجليزية وأرقام وشرطة (مثل DL-CS-03)'),
   name: z.string().trim().min(2).max(150),
   type: z.string().trim().toUpperCase().min(2).max(40),
   department: departmentCode,
@@ -32,6 +34,8 @@ export const equipmentSchema = z.object({
 export const equipmentUpdateSchema = z
   .object({
     name: z.string().trim().min(2).max(150),
+    type: z.string().trim().toUpperCase().min(2).max(40),
+    department: departmentCode,
     location: z.string().trim().max(150).nullable(),
     status,
     formTemplateId: uuid.nullable(),
@@ -51,10 +55,35 @@ export const maintenanceSchema = z.object({
   resultingStatus: status.default('OPERATIONAL'),
 });
 
+/**
+ * The linked monitoring form must be an active form of this company that the equipment's
+ * department may use (forms bound to another department are refused).
+ */
+async function assertLinkableForm(formTemplateId: string | null | undefined, departmentId: number) {
+  if (!formTemplateId) return;
+  const t = await findTemplate({ id: formTemplateId });
+  if (!t || !t.is_active) throw AppError.unprocessable('النموذج المرتبط غير موجود أو غير مفعّل لشركتك');
+  if (t.department_id !== null && t.department_id !== departmentId) {
+    throw AppError.unprocessable(`النموذج "${t.title_ar}" مخصص لقسم آخر`);
+  }
+}
+
+function duplicateCode(err: unknown, code: string): never {
+  if ((err as { code?: string }).code === '23505') throw AppError.conflict(`رقم الجهاز ${code} مستخدم مسبقاً في شركتك`);
+  throw err;
+}
+
 export async function list(req: Request, res: Response) {
   const q = req.valid.query as z.infer<typeof listEquipmentQuery>;
   const departmentId = await resolveDepartmentScope(requireUser(req), q.department);
-  return ok(res, await listEquipment({ departmentId, status: q.status as EquipmentStatus | undefined, type: q.type }));
+  return ok(res, await listEquipment({ departmentId, status: q.status as EquipmentStatus | undefined, type: q.type, search: q.search }));
+}
+
+export async function maintenanceHistory(req: Request, res: Response) {
+  const { id } = req.valid.params as { id: string };
+  const e = await findEquipment({ id });
+  if (!e || !canAccessDepartment(req.user, e.department_id)) throw AppError.notFound('Equipment');
+  return ok(res, await listMaintenance(id));
 }
 
 export async function get(req: Request, res: Response) {
@@ -67,6 +96,7 @@ export async function create(req: Request, res: Response) {
   const b = req.valid.body as z.infer<typeof equipmentSchema>;
   const dept = await findDepartmentByCode(b.department);
   if (!dept) throw AppError.notFound('Department');
+  await assertLinkableForm(b.formTemplateId, dept.id);
   const id = await withTransaction(dbContext(req), async (db) => {
     const { rows } = await db.query<{ id: string }>(
       `INSERT INTO equipment (code, name, type, department_id, location, form_template_id, qr_token,
@@ -76,16 +106,21 @@ export async function create(req: Request, res: Response) {
         b.maintenanceIntervalDays, b.lastMaintenanceDate ?? null],
     );
     return rows[0]!.id;
-  });
+  }).catch((err) => duplicateCode(err, b.code));
   return created(res, await findEquipment({ id }));
 }
 
 export async function update(req: Request, res: Response) {
   const { id } = req.valid.params as { id: string };
   const b = req.valid.body as z.infer<typeof equipmentUpdateSchema>;
+  const existing = await findEquipment({ id });
+  if (!existing) throw AppError.notFound('Equipment');
+  const dept = b.department ? await findDepartmentByCode(b.department) : null;
+  const departmentId = dept?.id ?? existing.department_id;
+  await assertLinkableForm(b.formTemplateId !== undefined ? b.formTemplateId : existing.form_template_id, departmentId);
   const result = await withTransaction(dbContext(req), (db) =>
     db.query(
-      `UPDATE equipment SET name = COALESCE($2, name),
+      `UPDATE equipment SET name = COALESCE($2, name), type = COALESCE($10, type), department_id = $11,
               location = CASE WHEN $3::boolean THEN $4 ELSE location END,
               status = COALESCE($5, status),
               form_template_id = CASE WHEN $6::boolean THEN $7::uuid ELSE form_template_id END,
@@ -93,7 +128,8 @@ export async function update(req: Request, res: Response) {
               is_active = COALESCE($9, is_active)
         WHERE id = $1`,
       [id, b.name ?? null, b.location !== undefined, b.location ?? null, b.status ?? null,
-        b.formTemplateId !== undefined, b.formTemplateId ?? null, b.maintenanceIntervalDays ?? null, b.isActive ?? null],
+        b.formTemplateId !== undefined, b.formTemplateId ?? null, b.maintenanceIntervalDays ?? null, b.isActive ?? null,
+        b.type ?? null, departmentId],
     ),
   );
   if (!result.rowCount) throw AppError.notFound('Equipment');

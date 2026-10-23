@@ -72,3 +72,27 @@ export const CATEGORY_LABEL: Record<string, string> = {
   WMS_GDP: 'المستودعات وسلاسل التبريد (PRD — GDP / SFDA)',
   HSE: 'الصحة والسلامة',
 };
+
+/** Equipment kinds offered when adding a device (any other code is accepted by the API). */
+export const EQUIPMENT_TYPES: Record<string, { label: string; icon: string }> = {
+  DATA_LOGGER: { label: 'مسجل بيانات / حساس', icon: '📟' },
+  FRIDGE: { label: 'ثلاجة', icon: '🧊' },
+  FREEZER: { label: 'فريزر', icon: '❄️' },
+  BLAST_CHILLER: { label: 'مبرد سريع', icon: '🌬️' },
+  OVEN: { label: 'فرن', icon: '🔥' },
+  HOT_HOLDING: { label: 'حافظة ساخنة', icon: '♨️' },
+  VEHICLE: { label: 'مركبة نقل', icon: '🚚' },
+  OTHER: { label: 'أخرى', icon: '⚙️' },
+};
+
+export const EQUIPMENT_STATUS: Record<string, { label: string; color: string }> = {
+  OPERATIONAL: { label: 'يعمل', color: '#067647' },
+  UNDER_MAINTENANCE: { label: 'تحت الصيانة', color: '#B54708' },
+  OUT_OF_SERVICE: { label: 'خارج الخدمة', color: '#B42318' },
+};
+
+export const MAINTENANCE_TYPE: Record<string, string> = {
+  PREVENTIVE: 'صيانة وقائية',
+  CORRECTIVE: 'صيانة تصحيحية',
+  CALIBRATION: 'معايرة',
+};

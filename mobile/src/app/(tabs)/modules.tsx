@@ -17,6 +17,7 @@ const SECTIONS: { title: string; links: ModuleLink[] }[] = [
   {
     title: 'النماذج والسجلات',
     links: [
+      { icon: '📟', title: 'الأجهزة ومسجلات البيانات', description: 'الثلاجات والحساسات: رمز QR لكل جهاز، الصيانة والمعايرة، طباعة الملصقات', href: '/equipment', permission: 'equipment:read' },
       { icon: '📄', title: 'سجلات النماذج المعبأة', description: 'من عبأ، أين، بأي جهاز ومتى — مع سجل التعديلات', href: '/records', permission: 'record:read' },
     ],
   },
