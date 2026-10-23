@@ -4,7 +4,7 @@ import { query, runAsSystem } from '../config/database';
 import { emails, sendEmail } from '../services/email.service';
 import { maskEmail, OTP_TTL_MINUTES, resendChallenge } from '../services/otp.service';
 import {
-  approveTenant, buildCompanyCode, confirmRegistration, normalizePhone, publicCompany, registerCompany, resendActivation, setTenantStatus,
+  approveTenant, buildCompanyCode, confirmRegistration, normalizePhone, publicCompany, registerCompany, resendActivation, setTenantStatus, updateTenantDetails,
 } from '../services/tenant.service';
 import { AppError } from '../utils/AppError';
 import { created, dbContext, ok, paginate, requireUser } from '../utils/http';
@@ -83,6 +83,15 @@ const tenantStatus = z.enum(['PENDING_VERIFICATION', 'PENDING_REVIEW', 'ACTIVE',
 export const listTenantsQuery = pagination.extend({ status: tenantStatus.optional(), search: z.string().trim().max(100).optional() });
 export const tenantIdParams = z.object({ id: z.coerce.number().int().positive() });
 export const reviewSchema = z.object({ notes: z.string().trim().max(1000).optional() });
+export const tenantUpdateSchema = z
+  .object({
+    name: z.string().trim().min(2, 'اسم الشركة مطلوب').max(150),
+    phone,
+    email: z.email('بريد إلكتروني غير صالح').max(255),
+    address: z.string().trim().min(5, 'العنوان مطلوب').max(300),
+  })
+  .partial()
+  .refine((b) => Object.values(b).some((v) => v !== undefined), { message: 'لا توجد تغييرات' });
 export const reasonSchema = z.object({ reason: z.string().trim().min(5, 'اذكر السبب').max(1000) });
 export const attemptsQuery = pagination.extend({
   tenantId: z.coerce.number().int().positive().optional(),
@@ -164,6 +173,12 @@ export async function suspend(req: Request, res: Response) {
 export async function reactivate(req: Request, res: Response) {
   const { id } = req.valid.params as z.infer<typeof tenantIdParams>;
   return ok(res, await setTenantStatus(dbContext(req), id, 'REACTIVATE'));
+}
+
+/** Corrects the company's name, mobile, official e-mail or address (code stays fixed). */
+export async function updateDetails(req: Request, res: Response) {
+  const { id } = req.valid.params as z.infer<typeof tenantIdParams>;
+  return ok(res, await updateTenantDetails(dbContext(req), id, req.valid.body as z.infer<typeof tenantUpdateSchema>));
 }
 
 export async function reopen(req: Request, res: Response) {

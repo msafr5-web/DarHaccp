@@ -18,6 +18,7 @@ platformRoutes.use(authorizePlatform);
 platformRoutes.get('/stats', tenants.platformStats);
 platformRoutes.get('/tenants', validate({ query: tenants.listTenantsQuery }), tenants.listTenants);
 platformRoutes.get('/tenants/:id', validate({ params: tenants.tenantIdParams }), tenants.getTenant);
+platformRoutes.patch('/tenants/:id', validate({ params: tenants.tenantIdParams, body: tenants.tenantUpdateSchema }), tenants.updateDetails);
 platformRoutes.post('/tenants/:id/approve', validate({ params: tenants.tenantIdParams, body: tenants.reviewSchema }), tenants.approve);
 platformRoutes.post('/tenants/:id/reject', validate({ params: tenants.tenantIdParams, body: tenants.reasonSchema }), tenants.reject);
 platformRoutes.post('/tenants/:id/suspend', validate({ params: tenants.tenantIdParams, body: tenants.reasonSchema }), tenants.suspend);

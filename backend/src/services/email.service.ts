@@ -147,6 +147,17 @@ export const emails = {
       <p>يمكنكم تصحيح البيانات وإعادة التسجيل.</p>`),
   }),
 
+  emailChanged: (to: string, company: string, oldEmail: string, newEmail: string, loginUrl: string): Email => ({
+    to,
+    subject: `تم تحديث البريد الرسمي لـ ${company} — DarHaccp`,
+    text: `حدّثت إدارة المنصة البريد الرسمي لشركة ${company} من ${oldEmail} إلى ${newEmail}. رموز وروابط الدخول تُرسل الآن إلى ${newEmail}. رابط الدخول: ${loginUrl}`,
+    html: layout('تحديث البريد الرسمي', `<p>حدّثت إدارة منصة DarHaccp البريد الرسمي لشركة <b>${esc(company)}</b>:</p>
+      <table cellpadding="6" style="font-size:14px"><tr><td>البريد السابق</td><td dir="ltr">${esc(oldEmail)}</td></tr>
+      <tr><td>البريد الجديد</td><td dir="ltr"><b>${esc(newEmail)}</b></td></tr></table>
+      <p>من الآن تُرسل رموز وروابط الدخول إلى البريد الجديد.</p>${button(loginUrl, 'الدخول إلى منصة الشركة')}
+      <p style="font-size:13px;color:#b42318">إن لم تطلبوا هذا التغيير فتواصلوا مع إدارة المنصة فوراً.</p>`),
+  }),
+
   suspended: (to: string, name: string, reason: string): Email => ({
     to,
     subject: `تم إيقاف حساب ${name} مؤقتاً — DarHaccp`,

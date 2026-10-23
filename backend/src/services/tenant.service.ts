@@ -251,6 +251,68 @@ export async function setTenantStatus(ctx: DbContext, id: number, action: 'REJEC
   });
 }
 
+export interface TenantDetailsUpdate {
+  name?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+}
+
+/**
+ * Platform administrator corrects a company's details. The company code is NOT regenerated:
+ * it identifies the company since subscription and is embedded in the login link already sent.
+ * Changing the official e-mail also moves the company administrator's sign-in e-mail (so the
+ * company keeps access), after checking it is not used anywhere on the platform; both the old
+ * and the new address are notified. Every change is kept in the audit trail.
+ */
+export async function updateTenantDetails(ctx: DbContext, id: number, patch: TenantDetailsUpdate) {
+  return runAsSystem(async () => {
+    const tenant = await loadTenant(id);
+    const email = patch.email?.trim().toLowerCase();
+    const emailChanged = !!email && email !== tenant.email.toLowerCase();
+    const phone = patch.phone ? normalizePhone(patch.phone) : undefined;
+
+    // Sign-in account that carries the company e-mail (the company administrator).
+    const { rows: admins } = await query<{ id: string }>(
+      `SELECT id FROM users WHERE tenant_id = $1 AND LOWER(email) = LOWER($2) AND employee_no <> 'SYS-IOT'`,
+      [id, tenant.email],
+    );
+    const adminId = admins[0]?.id ?? null;
+
+    if (emailChanged) {
+      const clash = await query(
+        `SELECT 1 FROM tenants WHERE LOWER(email) = $1 AND id <> $2
+         UNION ALL
+         SELECT 1 FROM users WHERE LOWER(email) = $1 AND employee_no <> 'SYS-IOT' AND id IS DISTINCT FROM $3::uuid`,
+        [email, id, adminId],
+      );
+      if (clash.rowCount) throw AppError.conflict('البريد الإلكتروني مستخدم مسبقاً في المنصة — كل بريد لحساب واحد فقط');
+    }
+
+    const updated = await withTransaction({ ...ctx, bypass: true }, async (db) => {
+      const { rows } = await db.query<Tenant>(
+        `UPDATE tenants SET name = COALESCE($2, name), phone = COALESCE($3, phone), email = COALESCE($4, email),
+                address = COALESCE($5, address)
+          WHERE id = $1 RETURNING *`,
+        [id, patch.name?.trim() || null, phone ?? null, email ?? null, patch.address?.trim() || null],
+      );
+      if (emailChanged && adminId) {
+        await db.query('UPDATE users SET email = $2 WHERE id = $1', [adminId, email]);
+      }
+      return rows[0]!;
+    });
+
+    if (emailChanged) {
+      const notice = (to: string) =>
+        sendEmail(emails.emailChanged(to, updated.name, tenant.email, updated.email, companyLoginUrl(updated.code, updated.email)))
+          .catch((err) => logger.warn({ err }, 'E-mail change notice not sent'));
+      await notice(tenant.email);
+      await notice(updated.email);
+    }
+    return updated;
+  });
+}
+
 /** Re-sends the approval e-mail with the company's login link. */
 export async function resendActivation(id: number) {
   return runAsSystem(async () => {
