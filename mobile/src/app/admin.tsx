@@ -101,6 +101,10 @@ export default function AdminLoginScreen() {
             })}
           />
           <Text style={[styles.hint, { textAlign: 'center' }]}>لم تصل الرسالة؟ تحقق من مجلد Spam / الرسائل غير المرغوبة</Text>
+          <Notice tone="info" text="تصل الرسالة إلى مديري المنصة المسجَّلين فقط. إن كان بريدك لشركة أو موظفاً فاستخدم صفحة دخول الشركات." />
+          <Pressable onPress={() => router.push('/login')}>
+            <Text style={[authStyles.link, { textAlign: 'center' }]}>دخول الشركات والموظفين ←</Text>
+          </Pressable>
           <Pressable onPress={() => { setChallenge(null); setError(null); setOtp(''); }}>
             <Text style={authStyles.link}>→ تغيير البريد</Text>
           </Pressable>
