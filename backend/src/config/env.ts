@@ -52,6 +52,8 @@ const schema = z.object({
   RESEND_API_KEY: z.string().optional(),
 
   /** Platform (SaaS operator) administrator created by the seed, and recipient of new-registration notices. */
+  /** Extra platform administrators created at deployment (private, never in the repository): e-mails separated by comma / semicolon / space. */
+  PLATFORM_ADMIN_EMAILS: z.string().optional(),
   PLATFORM_ADMIN_EMAIL: z.string().email().default('platform-admin@darhaccp.sa'),
   PLATFORM_ADMIN_PASSWORD: z.string().min(12).optional(),
 

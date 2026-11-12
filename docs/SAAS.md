@@ -78,3 +78,12 @@ A separate sign-in page for platform administrators: `https://dar-haccp.vercel.a
 - An administrator who is already signed in is sent to the console; a company user is sent to their own home.
 - Notices to administrators (new company registrations, being added as an administrator) link to this page.
 - The company sign-in page (`/login`) is unchanged and still works for everyone, including administrators.
+
+## إنشاء مديري المنصة عند النشر (`PLATFORM_ADMIN_EMAILS`)
+
+A private setting (Vercel → Environment Variables, never committed: the repository is public) lists administrator e-mails, separated by comma, semicolon or space.
+
+- On every deployment the seed creates the missing ones as platform administrators (`PLT-00N`, no password: e-mail link + code sign-in).
+- It is idempotent. An address that already exists is left alone: an existing administrator, a suspended administrator (never re-activated), or any other account (a company user or a company contact e-mail).
+- The log carries counts only, never the addresses.
+- Plus addresses (for example `name+admin@gmail.com`) count as distinct e-mails but reach the same mailbox. This lets one person be a company administrator and a platform administrator.

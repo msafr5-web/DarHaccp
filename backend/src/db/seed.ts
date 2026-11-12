@@ -10,6 +10,7 @@ import { generateQrToken } from '../services/qr.service';
 import { blindIndex, encrypt } from '../utils/crypto';
 import { normalizeEntry } from '../services/healthRegister.service';
 import { syncHealthGuide } from '../services/healthGuide.service';
+import { ensurePlatformAdmins } from '../services/platformAdmin.service';
 import * as data from './seedData';
 
 /** The first customer company (pre-SaaS data) and its demo accounts. */
@@ -59,6 +60,12 @@ async function seed() {
     );
   } else {
     logger.warn('PLATFORM_ADMIN_PASSWORD not set — platform administrator not created');
+  }
+  if (env.PLATFORM_ADMIN_EMAILS) {
+    const report = await ensurePlatformAdmins(env.PLATFORM_ADMIN_EMAILS);
+    // Only counts are logged: the addresses are private.
+    logger.info({ created: report.filter((r) => r.result === 'created').length, existing: report.filter((r) => r.result === 'exists').length,
+      invalid: report.filter((r) => r.result === 'invalid').length }, 'Platform administrators from PLATFORM_ADMIN_EMAILS');
   }
 
   await withTransaction({ tenantId: DEMO_TENANT_ID }, async (db) => {

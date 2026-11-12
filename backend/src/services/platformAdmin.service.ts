@@ -31,7 +31,7 @@ export const listPlatformAdmins = () =>
  * Adds a platform administrator (full platform permissions). The e-mail must not be used anywhere on the platform —
  * neither by a user nor by a company — and receives a notice with the console link. No password is created.
  */
-export async function addPlatformAdmin(ctx: DbContext, input: { fullName: string; email: string }, addedBy: string) {
+export async function addPlatformAdmin(ctx: DbContext, input: { fullName: string; email: string }, addedBy: string, notify = true) {
   const email = input.email.trim().toLowerCase();
   const clash = await runAsSystem(() => query(
     `SELECT 1 FROM users WHERE LOWER(email) = $1 AND employee_no <> 'SYS-IOT'
@@ -55,9 +55,30 @@ export async function addPlatformAdmin(ctx: DbContext, input: { fullName: string
     throw err;
   });
 
+  if (!notify) return admin;
   await sendEmail(emails.platformAdminAdded(admin.email, admin.full_name, addedBy, `${env.APP_URL.replace(/\/+$/, '')}/admin`))
     .catch((err) => logger.warn({ err }, 'Platform admin notice not sent'));
   return admin;
+}
+
+/**
+ * Creates the administrators listed in PLATFORM_ADMIN_EMAILS (a private deployment setting, so the addresses never
+ * appear in the public repository). Idempotent: an address that already exists — as an administrator (even suspended)
+ * or as any other account — is left untouched and reported, never modified or re-activated.
+ */
+export async function ensurePlatformAdmins(raw: string | undefined) {
+  const report: { email: string; result: 'created' | 'exists' | 'invalid' }[] = [];
+  for (const item of (raw ?? '').split(/[,;\s]+/).map((x) => x.trim().toLowerCase()).filter(Boolean)) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(item)) { report.push({ email: item, result: 'invalid' }); continue; }
+    try {
+      await addPlatformAdmin({ userAgent: 'deploy' }, { fullName: `مدير المنصة (${item.split('@')[0]!.replace(/\+.*/, '')})`, email: item }, 'النظام', false);
+      report.push({ email: item, result: 'created' });
+    } catch (err) {
+      if (!(err instanceof AppError)) throw err;
+      report.push({ email: item, result: 'exists' });
+    }
+  }
+  return report;
 }
 
 /** Suspends / restores a platform administrator. You cannot suspend yourself, and the last active administrator stays. */
