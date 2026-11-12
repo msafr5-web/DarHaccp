@@ -30,6 +30,8 @@ const companyCode = z.string().trim().min(4).max(60).optional();
 export const loginSchema = z.object({
   companyCode,
   email: z.email().max(255),
+  /** PLATFORM = the management sign-in page (/admin): only platform administrators are served. */
+  portal: z.literal('PLATFORM').optional(),
 });
 export const magicLinkSchema = z.object({ challengeId: uuid, token: z.string().min(20).max(100) });
 export const verifyOtpSchema = z.object({ challengeId: uuid, code: z.string().trim().regex(/^\d{6}$/, 'الرمز 6 أرقام') });
@@ -84,7 +86,8 @@ const magicLoginUrl = (challengeId: string, token: string) =>
  * suspended) is told why by e-mail. Anti-flooding: one message per 60 s, five per 15 min.
  */
 export async function login(req: Request, res: Response) {
-  const { companyCode: code, email } = req.valid.body as z.infer<typeof loginSchema>;
+  const { companyCode: code, email, portal } = req.valid.body as z.infer<typeof loginSchema>;
+  const platformPortal = portal === 'PLATFORM';
 
   const challengeId = await runAsSystem(async () => {
     const attempt = (a: Omit<AttemptInfo, 'stage' | 'email' | 'companyCode'>) =>
@@ -97,8 +100,9 @@ export async function login(req: Request, res: Response) {
       `SELECT u.id, u.full_name, u.email, u.is_active, u.tenant_id, t.status AS tenant_status, t.name AS tenant_name
          FROM users u JOIN tenants t ON t.id = u.tenant_id
         WHERE LOWER(u.email) = LOWER($1) AND u.employee_no <> 'SYS-IOT'
-          AND ($2::text IS NULL OR LOWER(t.code) = LOWER($2))`,
-      [email, code ?? null],
+          AND ($2::text IS NULL OR LOWER(t.code) = LOWER($2))
+          AND (NOT $3::boolean OR u.role = 'PLATFORM_ADMIN')`,
+      [email, platformPortal ? null : code ?? null, platformPortal],
     );
     const user = users[0];
 
@@ -114,7 +118,8 @@ export async function login(req: Request, res: Response) {
     }
 
     // A company that cannot sign in yet (under review, suspended…): explain why by e-mail.
-    const { rows: tenants } = user
+    // (Never on the management page: it must not send company notices.)
+    const { rows: tenants } = user || platformPortal
       ? { rows: [] as { id: number; name: string; status: string; email: string }[] }
       : await query<{ id: number; name: string; status: string; email: string }>(
           `SELECT id, name, status, email FROM tenants WHERE LOWER(email) = LOWER($1) AND NOT is_platform`,
@@ -133,7 +138,8 @@ export async function login(req: Request, res: Response) {
     }
 
     if (!user || !user.is_active) {
-      await attempt({ tenantId: user?.tenant_id, userId: user?.id, success: false, reason: user ? 'USER_INACTIVE' : 'UNKNOWN_EMAIL' });
+      await attempt({ tenantId: user?.tenant_id, userId: user?.id, success: false,
+        reason: user ? 'USER_INACTIVE' : platformPortal ? 'NOT_PLATFORM_ADMIN' : 'UNKNOWN_EMAIL' });
       return randomUUID();
     }
 

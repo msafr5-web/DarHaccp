@@ -65,3 +65,16 @@ Console → **👑 مديرو المنصة**. Every platform administrator has t
 - **Not the same as a company admin:** a platform administrator cannot read a company's operational data (the dashboard answers 403).
 
 API: `GET /platform/admins`, `POST /platform/admins`, `PATCH /platform/admins/:id`.
+
+## صفحة دخول الإدارة (`/admin`)
+
+A separate sign-in page for platform administrators: `https://dar-haccp.vercel.app/admin`.
+
+- Same password-less flow: type the administrator e-mail, then use the login link or the 6-digit code from the mailbox.
+- Sent with `portal: "PLATFORM"` to `POST /auth/login`. The server then serves platform administrators only.
+- **No account discovery:** an administrator, a company user and an unknown e-mail all get the same answer. Only an administrator receives a message.
+- No company notices are sent from this page, and a company code is ignored.
+- A refused attempt (a non-administrator, or a suspended one) is recorded in the login-attempts log as `NOT_PLATFORM_ADMIN`, so the administrators can see who tried.
+- An administrator who is already signed in is sent to the console; a company user is sent to their own home.
+- Notices to administrators (new company registrations, being added as an administrator) link to this page.
+- The company sign-in page (`/login`) is unchanged and still works for everyone, including administrators.

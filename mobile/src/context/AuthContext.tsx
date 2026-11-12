@@ -18,7 +18,7 @@ interface AuthState {
   loading: boolean;
   /** Step 1: company code + e-mail + password → an OTP is e-mailed. */
   /** Sends ONE e-mail with a login link + 6-digit code (same answer whether or not the e-mail exists). */
-  startLogin: (email: string, companyCode?: string) => Promise<LoginChallenge>;
+  startLogin: (email: string, companyCode?: string, portal?: 'PLATFORM') => Promise<LoginChallenge>;
   /** Signs in from the one-click link of the e-mail. */
   verifyMagicLink: (challengeId: string, token: string) => Promise<void>;
   /** Step 2: the e-mailed 6-digit code → session. */
@@ -99,10 +99,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => setUnauthorizedHandler(null);
   }, [clearSession]);
 
-  const startLogin = useCallback(async (email: string, companyCode?: string) => {
+  const startLogin = useCallback(async (email: string, companyCode?: string, portal?: 'PLATFORM') => {
     return api<LoginChallenge>('/auth/login', {
       method: 'POST',
-      body: { email: email.trim(), ...(companyCode ? { companyCode } : {}) },
+      body: { email: email.trim(), ...(companyCode && !portal ? { companyCode } : {}), ...(portal ? { portal } : {}) },
     });
   }, []);
 

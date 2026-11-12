@@ -74,6 +74,7 @@ function RootNavigator() {
       <Stack.Screen name="login-link" options={{ headerShown: false }} />
       <Stack.Screen name="c/[code]" options={{ headerShown: false }} />
       <Stack.Screen name="magic" options={{ headerShown: false }} />
+      <Stack.Screen name="admin" options={{ headerShown: false }} />
       <Stack.Screen name="q/[token]" options={{ title: 'فتح النموذج' }} />
 
       <Stack.Protected guard={!!user && isPlatform}>

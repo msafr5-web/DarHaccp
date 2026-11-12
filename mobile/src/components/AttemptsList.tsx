@@ -15,6 +15,7 @@ const STAGES: Record<LoginAttempt['stage'], string> = {
 
 const REASONS: Record<string, string> = {
   UNKNOWN_EMAIL: 'بريد غير مسجل',
+  NOT_PLATFORM_ADMIN: 'محاولة دخول للإدارة ببريد ليس مدير منصة',
   EMAIL_COOLDOWN: 'طلب متكرر خلال دقيقة (أُعيد استخدام الرسالة السابقة)',
   EMAIL_THROTTLED: 'تجاوز حد الرسائل — حماية من الإغراق',
   MAGIC_LINK_INVALID: 'رابط دخول غير صالح',

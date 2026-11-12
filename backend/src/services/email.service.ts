@@ -113,7 +113,7 @@ export const emails = {
       <tr><td>الشركة</td><td><b>${esc(t.name)}</b></td></tr><tr><td>رمز الشركة</td><td dir="ltr"><b>${esc(t.code)}</b></td></tr>
       <tr><td>الرقم التعريفي</td><td>${esc(t.account_no)}</td></tr><tr><td>الجوال</td><td dir="ltr">${esc(t.phone)}</td></tr>
       <tr><td>البريد</td><td dir="ltr">${esc(t.email)}</td></tr><tr><td>العنوان</td><td>${esc(t.address)}</td></tr></table>
-      ${button(`${env.APP_URL}/platform`, 'فتح لوحة إدارة المنصة')}`),
+      ${button(`${env.APP_URL}/admin`, 'فتح لوحة إدارة المنصة')}`),
   }),
 
   platformAdminAdded: (to: string, name: string, addedBy: string, url: string): Email => ({

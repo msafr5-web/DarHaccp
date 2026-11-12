@@ -55,7 +55,7 @@ export async function addPlatformAdmin(ctx: DbContext, input: { fullName: string
     throw err;
   });
 
-  await sendEmail(emails.platformAdminAdded(admin.email, admin.full_name, addedBy, `${env.APP_URL.replace(/\/+$/, '')}/platform`))
+  await sendEmail(emails.platformAdminAdded(admin.email, admin.full_name, addedBy, `${env.APP_URL.replace(/\/+$/, '')}/admin`))
     .catch((err) => logger.warn({ err }, 'Platform admin notice not sent'));
   return admin;
 }
