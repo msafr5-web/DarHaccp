@@ -54,3 +54,14 @@ RuknHacpp + 0566477687 + 23-10-2026  →  RuknH | 77687 | 23102026  →  RuknH77
 | `EMAIL_FROM` | `DarHaccp <darhaccp@darhaccp.com>` |
 | `PLATFORM_ADMIN_EMAIL` / `PLATFORM_ADMIN_PASSWORD` | حساب مدير المنصة الأول |
 | `APP_URL` | رابط الموقع (لروابط التفعيل) |
+
+## مديرو المنصة (Platform administrators)
+
+Console → **👑 مديرو المنصة**. Every platform administrator has the full platform permissions: reviewing, approving and editing companies, the form library, the health certificate guide, the login-attempts log, and managing the other administrators.
+
+- **Adding:** a name and an e-mail. The e-mail must not be used by any user or any non-rejected company, and it is normalised (trimmed, lower case) before validation. The new administrator gets employee number `PLT-00N`, no password, and a notice e-mail with the console link. The addition is in the audit trail.
+- **Signing in:** the same as everyone else: type the e-mail, then use the link or the 6-digit code that arrives in that mailbox. The mailbox must therefore be real and controlled by the person.
+- **Suspending / restoring:** a suspended administrator loses the session at once and cannot sign in. You cannot suspend your own account.
+- **Not the same as a company admin:** a platform administrator cannot read a company's operational data (the dashboard answers 403).
+
+API: `GET /platform/admins`, `POST /platform/admins`, `PATCH /platform/admins/:id`.

@@ -116,6 +116,17 @@ export const emails = {
       ${button(`${env.APP_URL}/platform`, 'فتح لوحة إدارة المنصة')}`),
   }),
 
+  platformAdminAdded: (to: string, name: string, addedBy: string, url: string): Email => ({
+    to,
+    subject: 'تمت إضافتك مديراً لمنصة DarHaccp',
+    text: `أضافك ${addedBy} مديراً لمنصة DarHaccp بكافة صلاحيات الإدارة. للدخول افتح ${url} وأدخل هذا البريد فقط، وسيصلك رابط ورمز دخول.`,
+    html: layout('تمت إضافتك مديراً للمنصة', `<p>مرحباً ${esc(name)}،</p>
+      <p>أضافك <b>${esc(addedBy)}</b> مديراً لمنصة DarHaccp بكافة صلاحيات الإدارة: مراجعة الشركات واعتمادها، ومكتبة النماذج، ودليل الشهادة الصحية، وسجل محاولات الدخول.</p>
+      <p>للدخول افتح لوحة المنصة وأدخل هذا البريد فقط، وسيصلك <b>رابط دخول ورمز تحقق</b> — لا توجد كلمة مرور.</p>
+      ${button(url, 'فتح لوحة إدارة المنصة')}
+      <p style="font-size:13px;color:#b42318">إن لم تتوقع هذه الرسالة فتجاهلها وأبلغ إدارة المنصة.</p>`),
+  }),
+
   approved: (to: string, t: { name: string; code: string; account_no: string }, loginUrl: string): Email => ({
     to,
     subject: `تمت الموافقة على اشتراك ${t.name} — DarHaccp`,

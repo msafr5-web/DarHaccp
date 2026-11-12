@@ -82,6 +82,7 @@ function RootNavigator() {
         <Stack.Screen name="platform/attempts" options={{ title: 'محاولات الدخول' }} />
         <Stack.Screen name="platform/forms/index" options={{ title: 'مكتبة النماذج' }} />
         <Stack.Screen name="platform/health-guide" options={{ title: 'إدارة دليل الشهادة الصحية' }} />
+        <Stack.Screen name="platform/admins" options={{ title: 'مديرو المنصة' }} />
         <Stack.Screen name="platform/forms/[id]" options={{ title: 'تحرير النموذج' }} />
         <Stack.Screen name="platform/tenant-form" options={{ title: 'نموذج الشركة' }} />
       </Stack.Protected>

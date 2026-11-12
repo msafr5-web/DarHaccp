@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import * as forms from '../controllers/catalog.controller';
 import * as guide from '../controllers/healthGuide.controller';
+import * as admins from '../controllers/platformAdmin.controller';
 import * as tenants from '../controllers/tenant.controller';
 import { authorize, authorizePlatform } from '../middlewares/auth';
 import { authRateLimiter } from '../middlewares/security';
@@ -27,6 +28,11 @@ platformRoutes.post('/tenants/:id/suspend', validate({ params: tenants.tenantIdP
 platformRoutes.post('/tenants/:id/reactivate', validate({ params: tenants.tenantIdParams }), tenants.reactivate);
 platformRoutes.post('/tenants/:id/reopen', validate({ params: tenants.tenantIdParams, body: tenants.reviewSchema }), tenants.reopen);
 platformRoutes.post('/tenants/:id/resend-activation', validate({ params: tenants.tenantIdParams }), tenants.resendActivationLink);
+// Platform administrators (full platform permissions).
+platformRoutes.get('/admins', admins.list);
+platformRoutes.post('/admins', validate({ body: admins.addSchema }), admins.add);
+platformRoutes.patch('/admins/:id', validate({ params: admins.idParams, body: admins.activeSchema }), admins.setActive);
+
 // Health certificate guide (reference content shared by every company).
 platformRoutes.get('/health-guide', guide.getGuideAdmin);
 platformRoutes.patch('/health-guide/:kind/:id', validate({ params: guide.guideItemParams }), guide.updateItem);
